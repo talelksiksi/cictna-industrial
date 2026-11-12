@@ -104,6 +104,9 @@ public sealed partial class OpcUaClient : IAsyncDisposable
     /// <summary>The endpoint URL of the current or last connection.</summary>
     public string? EndpointUrl { get; private set; }
 
+    /// <summary>The server endpoint chosen for the current or last connection (security mode, policy, certificate).</summary>
+    public EndpointDescription? Endpoint { get; private set; }
+
     /// <summary>The server's namespace URIs, indexed by namespace index. Read at connect.</summary>
     public IReadOnlyList<string> NamespaceUris => _namespaceUris;
 
@@ -113,9 +116,15 @@ public sealed partial class OpcUaClient : IAsyncDisposable
     // ---- connection --------------------------------------------------------------------
 
     /// <summary>
-    /// Opens a secure channel and activates a session, then reads the server's namespace array and
-    /// operation limits. Completes when the session is usable.
+    /// Asks the server for its endpoints, chooses one that matches the options (see
+    /// <see cref="Endpoint"/>), opens the secure channel and activates the session, then reads the
+    /// server's namespace array and operation limits. Completes when the session is usable.
     /// </summary>
+    /// <remarks>
+    /// The TCP connection always goes to <paramref name="endpointUrl"/>, even if the server
+    /// advertises another host name in its endpoints (common on plant networks where that name
+    /// does not resolve). When no endpoint fits, the exception message lists what the server offers.
+    /// </remarks>
     /// <param name="endpointUrl">Server URL, for example <c>opc.tcp://plc01:4840</c>.</param>
     /// <param name="cancellationToken">Cancels connecting.</param>
     /// <exception cref="OpcUaException">The server is unreachable, refused the security or identity, or timed out.</exception>
@@ -125,7 +134,20 @@ public sealed partial class OpcUaClient : IAsyncDisposable
         ArgumentException.ThrowIfNullOrEmpty(endpointUrl);
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         EndpointUrl = endpointUrl;
-        await _worker.ConnectAsync(endpointUrl, cancellationToken).ConfigureAwait(false);
+        if (_worker.State != ConnectionState.Disconnected)
+        {
+            throw new InvalidOperationException($"The client is {_worker.State}; disconnect first.");
+        }
+
+        var discovery = await _worker.GetEndpointsAsync(endpointUrl).WaitAsync(_options.ConnectTimeout, cancellationToken).ConfigureAwait(false);
+        var endpoint = EndpointSelector.Select(Decode(discovery, GetEndpointsResponse.Decode).Endpoints, _options);
+        var encoder = new BinaryEncoder();
+        endpoint.Encode(encoder);
+        var tokenType = _options.Identity is UserIdentity.UserNameIdentity ? UserTokenType.UserName : UserTokenType.Anonymous;
+        Endpoint = endpoint;
+        LogEndpoint(_logger, endpoint.SecurityMode, endpoint.SecurityPolicyUri ?? string.Empty, tokenType);
+
+        await _worker.ConnectAsync(endpointUrl, encoder.ToArray(), tokenType, cancellationToken).ConfigureAwait(false);
         await ReadServerInfoAsync(cancellationToken).ConfigureAwait(false);
         LogConnected(_logger, endpointUrl, _namespaceUris.Length, _limits.MaxNodesPerRead);
     }
@@ -438,6 +460,9 @@ public sealed partial class OpcUaClient : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Connected to {EndpointUrl}: {NamespaceCount} namespaces, {MaxNodesPerRead} nodes per read")]
     private static partial void LogConnected(ILogger logger, string endpointUrl, int namespaceCount, int maxNodesPerRead);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Using endpoint {SecurityMode} {SecurityPolicy} with {TokenType} identity")]
+    private static partial void LogEndpoint(ILogger logger, MessageSecurityMode securityMode, string securityPolicy, UserTokenType tokenType);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not release browse continuation points")]
     private static partial void LogReleaseFailed(ILogger logger, Exception exception);

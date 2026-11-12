@@ -72,7 +72,8 @@ internal static partial class NativeMethods
     internal static partial void ClientDelete(nint client);
 
     [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_connect", StringMarshalling = StringMarshalling.Utf8)]
-    internal static partial uint ClientConnect(ClientHandle client, string endpointUrl);
+    internal static unsafe partial uint ClientConnect(ClientHandle client, string endpointUrl, byte* endpoint,
+        nuint endpointLength, int userTokenType);
 
     [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_disconnect")]
     internal static partial uint ClientDisconnect(ClientHandle client);

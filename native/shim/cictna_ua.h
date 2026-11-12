@@ -137,8 +137,18 @@ CICTNA_UA_API uint32_t cictna_ua_client_new(const cictna_ua_client_options *opti
 /* Disconnects (without waiting) and frees everything, including undelivered completions. */
 CICTNA_UA_API void cictna_ua_client_delete(cictna_ua_client *client);
 
-/* Starts connecting (secure channel, then session). Progress shows in cictna_ua_client_state. */
-CICTNA_UA_API uint32_t cictna_ua_client_connect(cictna_ua_client *client, const char *endpoint_url);
+/*
+ * Starts connecting (secure channel, then session). Progress shows in cictna_ua_client_state.
+ * `endpoint` is the binary-encoded EndpointDescription chosen by the caller (from GetEndpoints):
+ * open62541 then opens the channel with exactly that security mode and policy, pins the server
+ * certificate it contains, and skips its own endpoint discovery. The TCP connection always goes
+ * to endpoint_url, not to the URL inside the description (servers often advertise host names
+ * that clients cannot resolve). user_token_type selects the endpoint's user token policy:
+ * 0 anonymous, 1 user name.
+ */
+CICTNA_UA_API uint32_t cictna_ua_client_connect(cictna_ua_client *client, const char *endpoint_url,
+                                                const uint8_t *endpoint, size_t endpoint_len,
+                                                int32_t user_token_type);
 
 /* Starts a clean disconnect (close session, close channel). */
 CICTNA_UA_API uint32_t cictna_ua_client_disconnect(cictna_ua_client *client);
