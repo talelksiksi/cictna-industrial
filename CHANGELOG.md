@@ -4,6 +4,15 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 
 ## [Unreleased]
 
+### Added (documentation)
+
+- `docs/pc-steps.md`: checklist of everything to do on the Windows PC, with done/open status.
+- Build records: `scripts/build-and-record.sh` runs the full pipeline and writes a numbered record
+  to `docs/builds/`; CI writes a record for every run (job summary and artifact). The native build
+  scripts now write `build-info.txt` (versions, compiler, options, SHA-256) next to each binary.
+- `docs/native-layer.md`: design of the native layer, version bump and ABI change procedures.
+- Context comments throughout the shim, build scripts and C# code explaining why, not only what.
+
 ### Added (Phase 0: foundation)
 
 - Native layer: open62541 v1.5.10 and mbedTLS v3.6.7 built from source at pinned commits,

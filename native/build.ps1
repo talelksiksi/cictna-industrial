@@ -4,9 +4,23 @@
   mbedTLS (static) + open62541 (static) + our shim, linked into native\out\win-x64\cictna_ua.dll.
 
 .DESCRIPTION
+  Windows counterpart of native/build.sh; the two must use the same open62541 options.
+  Design notes: docs/native-layer.md.
+
   Requires Git, CMake 3.20 or newer, and Visual Studio 2022 or newer (or the Build Tools)
   with the "Desktop development with C++" workload. Runs in Windows PowerShell 5.1 and PowerShell 7.
-  The DLL links the C runtime statically (/MT), so client machines need no VC++ redistributable.
+
+  Output in native\out\win-x64\:
+    cictna_ua.dll    mbedTLS + open62541 + our shim, one self-contained DLL
+    build-info.txt   versions, compiler, options and SHA-256 (read by the build records)
+
+  Choices specific to Windows:
+   - The Visual Studio generator (-A x64) is used rather than Ninja, so the script works from a
+     plain PowerShell without a "Developer Command Prompt" environment.
+   - The C runtime is linked statically (/MT, CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded), so client
+     machines need no Visual C++ redistributable. CMP0091=NEW is forced because older
+     cmake_minimum_required() calls in the dependencies would otherwise ignore that setting.
+   - Sources are pinned by tag AND commit (versions.env); a mismatch stops the build.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File native\build.ps1
@@ -92,6 +106,7 @@ Invoke-Checked cmake @('--build', (Join-Path $work 'mbedtls'), '--config', 'Rele
 Invoke-Checked cmake @('--install', (Join-Path $work 'mbedtls'), '--config', 'Release')
 
 Write-Host "== building open62541 $($v.OPEN62541_TAG) for $Rid"
+# Options are explained one by one in native/build.sh; keep both lists identical.
 Invoke-Checked cmake (@('-S', (Join-Path $deps 'open62541'), '-B', (Join-Path $work 'open62541')) + $common + @(
     '-DBUILD_SHARED_LIBS=OFF',
     '-DUA_ENABLE_ENCRYPTION=MBEDTLS',
@@ -119,4 +134,40 @@ Invoke-Checked cmake @('--build', (Join-Path $work 'shim'), '--config', 'Release
 
 $dll = Join-Path $out 'cictna_ua.dll'
 if (-not (Test-Path $dll)) { throw "build finished but $dll is missing" }
+
+# ---- build-info.txt -------------------------------------------------------------
+# Same "key: value" format as build.sh. The compiler is read from the file CMake writes
+# when it detects the compiler, so it records what was really used.
+$ccFile = Get-ChildItem (Join-Path $work 'shim\CMakeFiles') -Recurse -Filter 'CMakeCCompiler.cmake' | Select-Object -First 1
+$ccId = ''; $ccVersion = ''
+foreach ($line in Get-Content $ccFile.FullName) {
+    if ($line -match '^set\(CMAKE_C_COMPILER_ID "(.*)"\)$') { $ccId = $Matches[1] }
+    if ($line -match '^set\(CMAKE_C_COMPILER_VERSION "(.*)"\)$') { $ccVersion = $Matches[1] }
+}
+$repoRoot = Split-Path $here -Parent
+$saved = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+$repoCommit = (& git -C $repoRoot rev-parse --short HEAD 2>$null)
+$repoDirty = if (& git -C $repoRoot status --porcelain 2>$null) { 'yes' } else { 'no' }
+$ErrorActionPreference = $saved
+if (-not $repoCommit) { $repoCommit = 'unknown' }
+$cmakeVersion = ((& cmake --version | Select-Object -First 1) -split ' ')[2]
+$item = Get-Item $dll
+$info = @(
+    "rid: $Rid",
+    "built_utc: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))",
+    "repo_commit: $repoCommit",
+    "repo_dirty: $repoDirty",
+    "open62541: $($v.OPEN62541_TAG) ($($v.OPEN62541_SHA))",
+    "mbedtls: $($v.MBEDTLS_TAG) ($($v.MBEDTLS_SHA))",
+    "compiler: $ccId $ccVersion",
+    "cmake: $cmakeVersion",
+    'options: encryption=mbedtls multithreading=100 ns0=reduced pubsub=off loglevel=300 crt=static',
+    "file: $($item.Name)",
+    "size_bytes: $($item.Length)",
+    "sha256: $((Get-FileHash -Algorithm SHA256 $dll).Hash.ToLowerInvariant())"
+)
+# ASCII without BOM so the bash record script reads it the same way as the Linux file.
+[System.IO.File]::WriteAllLines((Join-Path $out 'build-info.txt'), $info, (New-Object System.Text.UTF8Encoding($false)))
+
 Write-Host "== done: $dll"

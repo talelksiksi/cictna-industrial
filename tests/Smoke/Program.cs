@@ -1,3 +1,12 @@
+// Phase 0 smoke test, run by CI on every platform and by hand after installing on a new machine:
+//
+//   dotnet run --project tests/Smoke -c Release
+//
+// It answers one question: does the native OPC UA stack load and work on this machine?
+// Deliberately a console app with no test framework, so it also runs where only the .NET
+// runtime is installed (a plant PC, an edge box). Prints one PASS/FAIL line per check and
+// exits with 0 only if everything passed, so scripts and CI can rely on the exit code.
+
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;

@@ -4,6 +4,26 @@ namespace Cictna.Industrial.OpcUa.Native;
 /// Version, build features and health checks of the native OPC UA library
 /// (open62541 with mbedTLS, behind the cictna_ua shim).
 /// </summary>
+/// <remarks>
+/// <para>
+/// Where this sits: <c>Cictna.Industrial.OpcUa.Native</c> is the lowest managed layer. It owns the
+/// native binaries (one per runtime, under <c>runtimes/&lt;rid&gt;/native/</c>) and the P/Invoke
+/// declarations. The OPC UA client and server types arrive in <c>Cictna.Industrial.OpcUa</c>
+/// (Phase 1) and build on this assembly; applications normally never call it directly, except
+/// for <see cref="EnsureCompatible"/> at startup and the self test in health checks.
+/// </para>
+/// <para>
+/// Why the checks matter: the managed and native halves are built separately (C# by
+/// <c>dotnet</c>, C by CMake on three platforms) and meet only at run time. A stale DLL copied
+/// next to a newer assembly would otherwise fail with confusing access violations deep inside a
+/// call. The ABI version and feature flags turn that into one clear error at startup.
+/// </para>
+/// <para>
+/// Thread safety: every member is safe to call from any thread. The properties read static data
+/// from the library; <see cref="RunLoopbackSelfTest"/> creates its own server and client and
+/// shares nothing with other calls.
+/// </para>
+/// </remarks>
 /// <example>
 /// <code>
 /// OpcUaNativeLibrary.EnsureCompatible();
@@ -66,6 +86,9 @@ public static class OpcUaNativeLibrary
         var timeoutMs = (uint)Math.Min(timeout.TotalMilliseconds, uint.MaxValue);
 
         var status = NativeMethods.SelfTestLoopback(port, timeoutMs, out var serverTime);
+
+        // OPC UA DateTime is 100 ns ticks since 1601-01-01 UTC, the same epoch and unit as a
+        // Windows FILETIME, so FromFileTimeUtc converts it exactly on every OS.
         DateTimeOffset? time = status == 0 && serverTime > 0
             ? new DateTimeOffset(DateTime.FromFileTimeUtc(serverTime))
             : null;

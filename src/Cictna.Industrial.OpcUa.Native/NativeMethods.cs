@@ -9,6 +9,24 @@ namespace Cictna.Industrial.OpcUa.Native;
 /// Keep this file a one-to-one mirror of the header. Nothing here is public:
 /// callers go through <see cref="OpcUaNativeLibrary"/> and, from Phase 1, safe handles.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <c>LibraryImport</c> (source-generated marshalling) rather than <c>DllImport</c>: the
+/// marshalling code is generated at compile time, so it is visible, trimming- and AOT-safe,
+/// and costs nothing at run time. All parameters are blittable (ints, pointers), so no
+/// marshalling stubs are needed at all.
+/// </para>
+/// <para>
+/// Type mapping to C: int32_t = int, uint32_t = uint, uint16_t = ushort, int64_t = long,
+/// const char* = nint (read with <see cref="ReadStaticString"/>, never freed, because the
+/// shim returns pointers to static storage). Calling convention is the platform default;
+/// x64 and ARM64 each have a single C calling convention, so nothing needs to be specified.
+/// </para>
+/// <para>
+/// When changing a signature: change cictna_ua.h, this file and <c>CICTNA_UA_ABI_VERSION</c> /
+/// <see cref="OpcUaNativeLibrary.ExpectedAbiVersion"/> together, in one commit.
+/// </para>
+/// </remarks>
 internal static partial class NativeMethods
 {
     internal const string LibraryName = "cictna_ua";
