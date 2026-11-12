@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The client against node-opcua (an independent OPC UA implementation, MIT) started from
+    tests/Interop/node-opcua-server. Needs Node.js 22.13+; without it the tests are skipped,
+    unless CICTNA_REQUIRE_INTEROP=1 (CI), then they fail.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cictna.Industrial.OpcUa\Cictna.Industrial.OpcUa.csproj" />
+  </ItemGroup>
+
+</Project>

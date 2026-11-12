@@ -1,0 +1,10 @@
+{
+  "name": "cictna-interop-node-opcua-server",
+  "private": true,
+  "description": "Independent OPC UA server (node-opcua, MIT) used only by the interop tests. Never shipped.",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22.13.0" },
+  "dependencies": {
+    "node-opcua": "2.187.26"
+  }
+}

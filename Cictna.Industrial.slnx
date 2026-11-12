@@ -8,6 +8,9 @@
   <Folder Name="/tests/Integration/">
     <Project Path="tests/Integration/Cictna.Industrial.OpcUa.IntegrationTests/Cictna.Industrial.OpcUa.IntegrationTests.csproj" />
   </Folder>
+  <Folder Name="/tests/Interop/">
+    <Project Path="tests/Interop/Cictna.Industrial.OpcUa.InteropTests/Cictna.Industrial.OpcUa.InteropTests.csproj" />
+  </Folder>
   <Folder Name="/tests/Smoke/">
     <Project Path="tests/Smoke/Cictna.Industrial.Smoke.csproj" />
   </Folder>

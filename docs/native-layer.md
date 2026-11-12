@@ -111,7 +111,10 @@ codec follows open62541 where the specification leaves room, and works around th
 - Endpoint switching: open62541's own endpoint selection closes and reopens the channel to change
   security, which does not work with noReconnect. The client therefore runs GetEndpoints on a
   separate plain discovery client, chooses the endpoint in C# (EndpointSelector) and passes it in
-  preset, so the secure channel is opened directly.
+  preset, so the secure channel is opened directly. The discovery client itself also gets a preset
+  plain endpoint: otherwise open62541 reopens the discovery channel on the URL the server
+  advertises (node-opcua advertises its machine name), which fails with noReconnect and, on plant
+  networks, often because that name does not resolve. Found by the node-opcua interop tests.
 
 ## Known limits
 
