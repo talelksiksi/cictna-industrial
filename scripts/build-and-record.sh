@@ -108,7 +108,7 @@ if [[ -n "$prev_commit" ]] && git cat-file -e "$prev_commit" 2>/dev/null; then
   changes_from="since build $(basename "$prev_file" | cut -c1-4) (\`${prev_commit:0:7}\`)"
 else
   changes=$(git log --format='- `%h` %s' HEAD)
-  changes_from="full history (first record)"
+  changes_from="full history, first record"
 fi
 [[ -z "$changes" ]] && changes="- (no new commits)"
 
