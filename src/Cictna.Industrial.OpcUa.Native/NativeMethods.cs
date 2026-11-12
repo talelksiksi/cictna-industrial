@@ -49,6 +49,112 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "cictna_ua_selftest_loopback")]
     internal static partial uint SelfTestLoopback(ushort port, uint timeoutMs, out long serverTime);
 
+    // ---- memory, codec, certificates (ABI 2) ------------------------------------------
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_free")]
+    internal static partial void Free(nint buffer);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_codec_roundtrip")]
+    internal static unsafe partial uint CodecRoundtrip(uint typeId, byte* input, nuint inputLength,
+        out nint output, out nuint outputLength, out nuint consumed);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_create_certificate", StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial uint CreateCertificate(string commonName, string? organization, string applicationUri,
+        string? dnsName, uint keySizeBits, uint validDays, out nint certificate, out nuint certificateLength,
+        out nint privateKey, out nuint privateKeyLength);
+
+    // ---- client (ABI 2) ---------------------------------------------------------------------
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_new")]
+    internal static unsafe partial uint ClientNew(ClientOptionsNative* options, out ClientHandle client);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_delete")]
+    internal static partial void ClientDelete(nint client);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_connect", StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial uint ClientConnect(ClientHandle client, string endpointUrl);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_disconnect")]
+    internal static partial uint ClientDisconnect(ClientHandle client);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_iterate")]
+    internal static partial uint ClientIterate(ClientHandle client, uint timeoutMs);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_state")]
+    internal static partial void ClientState(ClientHandle client, out int channelState, out int sessionState, out uint connectStatus);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_send")]
+    internal static unsafe partial uint ClientSend(ClientHandle client, uint requestEncodingId, uint responseEncodingId,
+        byte* request, nuint requestLength, out uint requestId);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_cancel")]
+    internal static partial uint ClientCancel(ClientHandle client, uint requestId);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_poll")]
+    internal static unsafe partial int ClientPoll(ClientHandle client, out uint requestId, out uint status,
+        out byte* response, out nuint responseLength);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_poll_log")]
+    internal static unsafe partial int ClientPollLog(ClientHandle client, out int level, out int category,
+        out byte* message, out uint dropped);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_get_endpoints", StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial uint ClientGetEndpoints(ClientHandle client, string url, out nint response, out nuint responseLength);
+
+    // ---- server (ABI 2) ---------------------------------------------------------------------
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_new")]
+    internal static unsafe partial uint ServerNew(ServerOptionsNative* options, out ServerHandle server);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_delete")]
+    internal static partial void ServerDelete(nint server);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_start")]
+    internal static partial uint ServerStart(ServerHandle server);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_iterate")]
+    internal static partial uint ServerIterate(ServerHandle server, out uint nextMs);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_stop")]
+    internal static partial uint ServerStop(ServerHandle server);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_add_namespace", StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial uint ServerAddNamespace(ServerHandle server, string uri, out ushort index);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_add_node")]
+    internal static unsafe partial uint ServerAddNode(ServerHandle server, byte* item, nuint itemLength,
+        out nint nodeId, out nuint nodeIdLength);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_write")]
+    internal static unsafe partial uint ServerWrite(ServerHandle server, byte* writeValue, nuint length);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_read")]
+    internal static unsafe partial uint ServerRead(ServerHandle server, byte* readValueId, nuint length,
+        int timestamps, out nint dataValue, out nuint dataValueLength);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_poll_log")]
+    internal static unsafe partial int ServerPollLog(ServerHandle server, out int level, out int category,
+        out byte* message, out uint dropped);
+
+    /// <summary>Copies a buffer allocated by the native library and frees it.</summary>
+    internal static byte[] TakeBuffer(nint buffer, nuint length)
+    {
+        try
+        {
+            if (buffer == 0)
+            {
+                return [];
+            }
+            var result = new byte[checked((int)length)];
+            Marshal.Copy(buffer, result, 0, result.Length);
+            return result;
+        }
+        finally
+        {
+            Free(buffer);
+        }
+    }
+
     /// <summary>Reads a static UTF-8 string owned by the native library. Never frees it.</summary>
     internal static string ReadStaticString(nint value) =>
         value == 0 ? string.Empty : Marshal.PtrToStringUTF8(value) ?? string.Empty;

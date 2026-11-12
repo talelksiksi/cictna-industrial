@@ -76,5 +76,9 @@ public sealed class NodeIdTests
         Assert.Equal("nsu=urn:plant;s=A", new ExpandedNodeId(new NodeId("A", 2), "urn:plant").ToString());
         Assert.Equal("svr=1;i=85", new ExpandedNodeId(new NodeId(85), null, 1).ToString());
         Assert.True(((ExpandedNodeId)new NodeId(85)).IsLocal);
+        // Normalisation required by Part 4: a URI forces namespace index 0, an empty URI is none.
+        Assert.Equal(0, new ExpandedNodeId(new NodeId("A", 2), "urn:plant").NodeId.NamespaceIndex);
+        Assert.Null(new ExpandedNodeId(new NodeId("A", 2), "").NamespaceUri);
+        Assert.Equal(2, new ExpandedNodeId(new NodeId("A", 2), "").NodeId.NamespaceIndex);
     }
 }

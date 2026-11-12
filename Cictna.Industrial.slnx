@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Cictna.Industrial.Core/Cictna.Industrial.Core.csproj" />
     <Project Path="src/Cictna.Industrial.OpcUa.Native/Cictna.Industrial.OpcUa.Native.csproj" />
+    <Project Path="src/Cictna.Industrial.OpcUa/Cictna.Industrial.OpcUa.csproj" />
   </Folder>
   <Folder Name="/tests/" />
   <Folder Name="/tests/Smoke/">
@@ -10,5 +11,6 @@
   <Folder Name="/tests/Unit/">
     <Project Path="tests/Unit/Cictna.Industrial.Core.Tests/Cictna.Industrial.Core.Tests.csproj" />
     <Project Path="tests/Unit/Cictna.Industrial.OpcUa.Native.Tests/Cictna.Industrial.OpcUa.Native.Tests.csproj" />
+    <Project Path="tests/Unit/Cictna.Industrial.OpcUa.Tests/Cictna.Industrial.OpcUa.Tests.csproj" />
   </Folder>
 </Solution>
