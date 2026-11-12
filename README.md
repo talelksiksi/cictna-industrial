@@ -26,6 +26,7 @@ A phase closes only when its exit criteria pass on Windows and Linux. See [CHANG
 
 ## Documentation
 
+- [docs/roadmap.md](docs/roadmap.md): goal, decisions, architecture, phases and exit criteria
 - [docs/pc-steps.md](docs/pc-steps.md): what has to be done on the Windows PC, with status
 - [docs/builds/](docs/builds/): one record per build (what, from which commit, verified where)
 - [docs/native-layer.md](docs/native-layer.md): how open62541 is built, wrapped and loaded
