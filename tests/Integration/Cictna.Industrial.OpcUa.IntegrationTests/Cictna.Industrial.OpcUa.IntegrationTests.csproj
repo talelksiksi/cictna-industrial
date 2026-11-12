@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Client against real servers over TCP on 127.0.0.1: our own OpcUaServer (open62541) here,
+    node-opcua in tests/Interop. Each test class starts its own server on a free port.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cictna.Industrial.OpcUa\Cictna.Industrial.OpcUa.csproj" />
+  </ItemGroup>
+
+</Project>
