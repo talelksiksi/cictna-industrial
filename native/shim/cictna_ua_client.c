@@ -331,6 +331,13 @@ uint32_t cictna_ua_client_get_endpoints(cictna_ua_client *c, const char *url, ui
     }
     tc.timeout = UA_Client_getConfig(c->client)->timeout;
     tc.noReconnect = true;
+    /* Preset a plain endpoint so open62541 skips its own endpoint selection. That selection may
+     * otherwise close the channel to reopen it on the URL the server advertises (node-opcua, for
+     * one, advertises its machine name), which fails with noReconnect and, on plant networks,
+     * often because that name does not resolve. Found by the node-opcua interop tests. */
+    tc.endpoint.securityMode = UA_MESSAGESECURITYMODE_NONE;
+    tc.endpoint.securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#None");
+    tc.endpoint.endpointUrl = UA_STRING_ALLOC(url);
     UA_Client *discovery = UA_Client_newWithConfig(&tc);
     if(!discovery)
         return UA_STATUSCODE_BADOUTOFMEMORY;

@@ -112,6 +112,16 @@ jobs:
         with:
           global-json-file: global.json
 
+      # Node.js runs the node-opcua interop server (tests/Interop). Installed per run, so the
+      # self-hosted runner needs no Node.js of its own.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install interop server dependencies
+        working-directory: tests/Interop/node-opcua-server
+        run: npm ci --no-audit --no-fund
+
       - uses: actions/download-artifact@v8
         with:
           pattern: native-*
@@ -121,7 +131,11 @@ jobs:
       - name: Build
         run: dotnet build Cictna.Industrial.slnx -c Release
 
-      - name: Unit tests
+      # Unit, integration (our own server over TCP) and interop (node-opcua) tests.
+      # CICTNA_REQUIRE_INTEROP makes a missing interop server a failure instead of a skip.
+      - name: Tests
+        env:
+          CICTNA_REQUIRE_INTEROP: "1"
         run: dotnet test --solution Cictna.Industrial.slnx -c Release --no-build
 
       - name: Smoke test
@@ -151,8 +165,9 @@ jobs:
       - name: Pack (all runtimes required)
         run: |
           version="${GITHUB_REF_NAME#v}"
-          dotnet pack src/Cictna.Industrial.OpcUa.Native -c Release -o artifacts \
-            -p:RequireAllNativeRuntimes=true -p:Version="$version"
+          for project in src/Cictna.Industrial.Core src/Cictna.Industrial.OpcUa.Native src/Cictna.Industrial.OpcUa; do
+            dotnet pack "$project" -c Release -o artifacts -p:RequireAllNativeRuntimes=true -p:Version="$version"
+          done
 
       - name: Publish to GitHub Packages
         run: |
