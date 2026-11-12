@@ -82,6 +82,20 @@ In one commit: edit `cictna_ua.h` and `cictna_ua.c`, mirror the change in `Nativ
 5. Read the upstream release notes for API changes that touch the shim.
 6. Run CI on Windows, then write a build record (`scripts/build-and-record.sh`).
 
+## Known upstream quirks
+
+Found by the differential codec tests (tests/Unit/Cictna.Industrial.OpcUa.Tests/Codec); our
+codec follows open62541 where the specification leaves room, and works around the rest.
+
+- Matrices: open62541 rejects array dimensions of 0. `Variant.Array` rejects them too, so such a
+  value fails early with a clear message instead of deep inside a write.
+- ExpandedNodeId: with a namespace URI the namespace index is forced to 0, and an empty URI counts
+  as none (Part 4 wording). `ExpandedNodeId` normalises the same way on construction.
+- An array of completely empty ExtensionObjects (null type id, no body) at the very end of a
+  buffer is rejected by open62541's length check, which assumes at least 4 bytes per element
+  while the empty form is 3. Harmless in real messages, which always continue after such an
+  array; noted here in case it ever shows up in a log.
+
 ## Known limits
 
 - Linux binaries need glibc 2.34 or newer (Ubuntu 22.04+, Debian 12+, recent Raspberry Pi OS),

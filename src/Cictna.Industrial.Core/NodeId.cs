@@ -108,6 +108,16 @@ public readonly struct NodeId : IEquatable<NodeId>
     /// <summary>The opaque identifier. Throws unless <see cref="IdType"/> is Opaque.</summary>
     public ReadOnlyMemory<byte> OpaqueIdentifier => IdType == NodeIdType.Opaque ? (byte[])_identifier! : throw WrongType(NodeIdType.Opaque);
 
+    /// <summary>The same identifier in another namespace.</summary>
+    /// <param name="namespaceIndex">The new namespace index.</param>
+    public NodeId WithNamespaceIndex(ushort namespaceIndex) => IdType switch
+    {
+        NodeIdType.Numeric => new NodeId(_numeric, namespaceIndex),
+        NodeIdType.String => new NodeId((string)_identifier!, namespaceIndex),
+        NodeIdType.Guid => new NodeId((Guid)_identifier!, namespaceIndex),
+        _ => new NodeId((byte[])_identifier!, namespaceIndex),
+    };
+
     private InvalidOperationException WrongType(NodeIdType wanted) =>
         new($"NodeId {this} has a {IdType} identifier, not {wanted}.");
 

@@ -7,7 +7,13 @@ find_package(open62541 REQUIRED CONFIG)
 
 set(CICTNA_UA_OUT_DIR "${CMAKE_BINARY_DIR}/out" CACHE PATH "Where the shared library is written")
 
-add_library(cictna_ua SHARED cictna_ua.c cictna_ua.h)
+add_library(cictna_ua SHARED
+    cictna_ua.c
+    cictna_ua_common.c
+    cictna_ua_client.c
+    cictna_ua_server.c
+    cictna_ua.h
+    cictna_ua_internal.h)
 target_link_libraries(cictna_ua PRIVATE open62541::open62541)
 set_target_properties(cictna_ua PROPERTIES
     C_STANDARD 99
@@ -22,7 +28,8 @@ if(WIN32)
     # mbedTLS 3.x uses BCrypt for entropy; open62541 needs Winsock and IP helper.
     target_link_libraries(cictna_ua PRIVATE ws2_32 iphlpapi bcrypt)
 else()
-    target_compile_options(cictna_ua PRIVATE -Wall -Wextra)
+    # Warnings are errors for our own C code (open62541 and mbedTLS are built separately).
+    target_compile_options(cictna_ua PRIVATE -Wall -Wextra -Werror)
     # Export only our cictna_ua_* functions, never the statically linked
     # open62541 or mbedTLS symbols, and strip the release binary.
     target_link_options(cictna_ua PRIVATE

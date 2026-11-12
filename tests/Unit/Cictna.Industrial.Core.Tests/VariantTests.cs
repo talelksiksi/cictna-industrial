@@ -57,6 +57,7 @@ public sealed class VariantTests
         Assert.Equal(6, m.ArrayLength);
         Assert.Throws<ArgumentException>(() => Variant.Matrix(BuiltInType.Int16, new short[] { 1, 2, 3 }, 2, 2));
         Assert.Throws<ArgumentException>(() => Variant.Matrix(BuiltInType.Int16, new short[] { 1 }, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Variant.Matrix(BuiltInType.Int16, Array.Empty<short>(), 2, 0));
     }
 
     [Fact]

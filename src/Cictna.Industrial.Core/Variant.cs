@@ -24,6 +24,7 @@ namespace Cictna.Industrial.Core;
 /// <para>
 /// Matrices are stored flat in row-major order (last index changes fastest) with
 /// <see cref="ArrayDimensions"/> giving the length of each dimension, exactly as on the wire.
+/// Every dimension must be at least 1; use an empty one-dimensional array for "no elements".
 /// </para>
 /// </remarks>
 /// <example>
@@ -229,7 +230,9 @@ public readonly struct Variant : IEquatable<Variant>
             long product = 1;
             foreach (var d in dimensions)
             {
-                ArgumentOutOfRangeException.ThrowIfNegative(d, nameof(dimensions));
+                // OPC UA stacks (open62541 among them) reject zero-length dimensions on the wire.
+                // An empty matrix is sent as an empty one-dimensional array instead.
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(d, nameof(dimensions));
                 product *= d;
             }
             if (product != (values?.Length ?? 0))

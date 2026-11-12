@@ -7,6 +7,11 @@ namespace Cictna.Industrial.Core;
 /// Used where a reference can leave the current server's address space (browse results, some
 /// type ids). When <see cref="NamespaceUri"/> is set it takes precedence over the namespace index.
 /// </summary>
+/// <remarks>
+/// Normalised on construction as Part 4 requires: when a namespace URI is given, the NodeId's
+/// namespace index is set to 0; an empty URI counts as no URI. This keeps the value identical to
+/// what any OPC UA stack (including open62541) reads back.
+/// </remarks>
 public readonly struct ExpandedNodeId : IEquatable<ExpandedNodeId>
 {
     /// <summary>Creates an ExpandedNodeId.</summary>
@@ -15,6 +20,14 @@ public readonly struct ExpandedNodeId : IEquatable<ExpandedNodeId>
     /// <param name="serverIndex">Index into the server's server array; 0 means the local server.</param>
     public ExpandedNodeId(NodeId nodeId, string? namespaceUri = null, uint serverIndex = 0)
     {
+        if (string.IsNullOrEmpty(namespaceUri))
+        {
+            namespaceUri = null;
+        }
+        else
+        {
+            nodeId = nodeId.WithNamespaceIndex(0);
+        }
         NodeId = nodeId;
         NamespaceUri = namespaceUri;
         ServerIndex = serverIndex;

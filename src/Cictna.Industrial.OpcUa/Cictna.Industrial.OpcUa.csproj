@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>OPC UA client (and later server) for the Cictna industrial stack, built on open62541 through Cictna.Industrial.OpcUa.Native.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cictna.Industrial.Core\Cictna.Industrial.Core.csproj" />
+    <ProjectReference Include="..\Cictna.Industrial.OpcUa.Native\Cictna.Industrial.OpcUa.Native.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cictna.Industrial.OpcUa.Tests" />
+  </ItemGroup>
+
+</Project>
