@@ -25,10 +25,20 @@ the NuGet packages.
 - Source: https://github.com/Mbed-TLS/mbedtls/tree/v3.6.7 (commit 068ff080b369adfac81509f9b57b2afabaf82dc5).
 - Used unmodified, statically linked into `cictna_ua`.
 
+## Microsoft.Extensions.Logging.Abstractions 10.0.x
+
+- Licence: MIT. NuGet dependency of Cictna.Industrial.OpcUa (installed from nuget.org, not bundled).
+
+## OPC UA StatusCode table
+
+- `src/Cictna.Industrial.Core/StatusCodes.g.cs` is generated from StatusCode.csv by the OPC
+  Foundation (MIT licence), as shipped with open62541 in tools/schema.
+
 ## Build and test tools (not redistributed)
 
 - .NET SDK and runtime: MIT.
 - xUnit.net v3: Apache-2.0.
+- node-opcua (MIT) and its dependencies: interop test server only (tests/Interop), never shipped.
 
 When a native dependency version changes in `native/versions.env`, rebuild, run
 `python3 scripts/collect-native-licenses.py` and update this file.

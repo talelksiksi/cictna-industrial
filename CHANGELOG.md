@@ -4,6 +4,33 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 
 ## [Unreleased]
 
+### Added (Phase 1: OPC UA client core)
+
+- `Cictna.Industrial.Core`: the common value model (OPC UA built-in types): `Variant` (scalars,
+  arrays, matrices), `DataValue` with quality and timestamps, `StatusCode` with the full
+  specification table, `NodeId`, `ExpandedNodeId`, `QualifiedName`, `LocalizedText`,
+  `ExtensionObject`, `DiagnosticInfo`.
+- OPC UA binary codec in C#, checked byte for byte against open62541 (differential tests over
+  thousands of random values) and hardened against hostile input (limits, mutation fuzzing).
+- `OpcUaClient`: connect with endpoint selection (None, Basic256Sha256 Sign and SignAndEncrypt,
+  anonymous or user name), read, write and browse of any size within server limits, browse
+  continuation points, GetEndpoints, timeouts and cancellation on every call, connection state
+  events, native logs to ILogger, metrics.
+- `OpcUaServer`: folders and variables of every built-in type from code, local value updates;
+  used as the test server and the base of the Phase 5 simulator.
+- `ApplicationCertificate.CreateSelfSigned`, `UserIdentity`, `OpcUaException`.
+- Native shim ABI 2: generic asynchronous service call with polled completions, client and server
+  objects, codec round trip, certificate creation, bounded native log queues.
+- Tests: 110 in total. 105 run everywhere (unit, differential, integration over TCP, security,
+  node-opcua interop); 5 Prosys interop tests run where a Prosys server is configured (the PC).
+
+### Fixed (found by the tests)
+
+- Untrusted server certificates were accepted when no trust list was set (open62541 default);
+  now rejected unless `AcceptAnyServerCertificateForDevelopment` is set.
+- Connecting to a server that advertises another host name (node-opcua, many plant servers)
+  failed during discovery; endpoint discovery and selection now always use the given URL.
+
 ### Added (documentation)
 
 - `docs/pc-steps.md`: checklist of everything to do on the Windows PC, with done/open status.

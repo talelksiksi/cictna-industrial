@@ -41,16 +41,35 @@ Open a new PowerShell and run each line. The expected result is on the right.
   It installs to `C:\ar\cictna` (short path on purpose, Windows has a 260-character path limit).
 - [ ] Check on GitHub: repository > Settings > Actions > Runners shows `TALEL-PC-NEW-cictna` as Idle.
 
-### 4. First Windows build (closes Phase 0)
+### 4. First Windows build (closes Phase 0 and the Windows half of Phase 1)
+- [ ] Optional but recommended: install Node.js 22 LTS (nodejs.org), so the node-opcua interop
+  tests also run locally. Without it they are skipped locally; CI installs Node.js itself.
 - [ ] Locally, in the repo folder:
   ```powershell
   powershell -ExecutionPolicy Bypass -File native\build.ps1
   dotnet test -c Release
   dotnet run --project tests\Smoke -c Release
   ```
-  Expected: `native\out\win-x64\cictna_ua.dll`, then `succeeded: 11`, then `SMOKE OK`.
+  Expected: `native\out\win-x64\cictna_ua.dll`, then `failed: 0` (105 passed with Node.js,
+  5 Prosys tests skipped until step 5), then `SMOKE OK`.
 - [ ] On GitHub: Actions > CI > Run workflow (or `gh workflow run CI -R talelksiksi/cictna-industrial`).
   All jobs green closes Phase 0. If something fails, tell Claude; it reads the log and fixes it.
+
+### 5. Prosys interop (closes Phase 1)
+Phase 1's exit criteria include the Prosys OPC UA Simulation Server, which is installed on the PC.
+- [ ] Start the Prosys OPC UA Simulation Server. Note its endpoint URL from the Status tab, usually
+  `opc.tcp://<pc-name>:53530/OPCUA/SimulationServer`.
+- [ ] In PowerShell, in the repo folder:
+  ```powershell
+  $env:CICTNA_PROSYS_URL = "opc.tcp://localhost:53530/OPCUA/SimulationServer"
+  dotnet test --project tests\Interop\Cictna.Industrial.OpcUa.InteropTests -c Release
+  ```
+- [ ] The secure-channel test fails on the first run: Prosys has not trusted our client certificate
+  yet. In Prosys, open the Certificates tab, find "Cictna Interop Client", choose Trust. Run the
+  command again: all 5 Prosys tests should pass (the certificate is kept in
+  `%TEMP%\cictna-interop`, so trusting once is enough).
+- [ ] Tell Claude the result (or paste the summary). Claude then writes the Phase 1 build record
+  with the Windows and Prosys results and closes the phase.
 
 ---
 

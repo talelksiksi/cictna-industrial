@@ -28,6 +28,8 @@ Personal / CICTNA RDC project. Not employer work.
 ## Commands
 ```bash
 native/build.sh linux-x64        # native library (also linux-arm64)
-dotnet test -c Release           # unit tests (Microsoft Testing Platform)
+dotnet test -c Release           # unit, integration and interop tests (Microsoft Testing Platform)
+(cd tests/Interop/node-opcua-server && npm ci)   # once, for the node-opcua interop server
+scripts/build-and-record.sh "<title>" --notes notes.md   # full pipeline + build record
 dotnet run --project tests/Smoke -c Release
 ```
