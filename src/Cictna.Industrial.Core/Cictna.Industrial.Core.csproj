@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Common value model for the Cictna industrial stack: OPC UA built-in types (Variant, DataValue, StatusCode, NodeId and friends), shared by the OPC UA, Modbus and simulator layers.</Description>
+  </PropertyGroup>
+
+</Project>
