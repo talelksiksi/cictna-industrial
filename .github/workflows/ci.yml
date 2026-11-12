@@ -164,3 +164,55 @@ jobs:
         with:
           name: packages
           path: artifacts/*.nupkg
+
+  # Writes a build record for this CI run: job results plus the build-info of each native
+  # binary (versions, compiler, SHA-256). Shown on the run page and kept as an artifact, so
+  # every CI build is documented, including failed ones. Local builds use
+  # scripts/build-and-record.sh, which writes the numbered records in docs/builds/.
+  record:
+    name: Build record
+    if: always()
+    needs: [native-linux, native-windows, managed]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: native-*
+          path: native-out
+          merge-multiple: true
+
+      - name: Write record
+        env:
+          NATIVE_LINUX: ${{ needs.native-linux.result }}
+          NATIVE_WINDOWS: ${{ needs.native-windows.result }}
+          MANAGED: ${{ needs.managed.result }}
+        run: |
+          {
+            echo "# CI build: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}"
+            echo
+            echo "Run ${GITHUB_RUN_NUMBER} (attempt ${GITHUB_RUN_ATTEMPT}), triggered by ${GITHUB_EVENT_NAME} on $(date -u +'%Y-%m-%d %H:%M') UTC."
+            echo
+            echo "| Job | Result |"
+            echo "|---|---|"
+            echo "| Native linux-x64 + linux-arm64 | ${NATIVE_LINUX} |"
+            echo "| Native win-x64 | ${NATIVE_WINDOWS} |"
+            echo "| Managed build, unit tests, smoke (Windows + Linux) | ${MANAGED} |"
+            echo
+            echo "## Native binaries"
+            for f in native-out/*/build-info.txt; do
+              [ -f "$f" ] || continue
+              echo
+              echo "### $(basename "$(dirname "$f")")"
+              echo
+              echo '```'
+              cat "$f"
+              echo '```'
+            done
+          } > build-record.md
+          cat build-record.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-record
+          path: build-record.md

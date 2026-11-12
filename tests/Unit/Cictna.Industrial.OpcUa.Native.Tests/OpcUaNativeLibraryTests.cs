@@ -3,8 +3,19 @@ using System.Net.Sockets;
 
 namespace Cictna.Industrial.OpcUa.Native.Tests;
 
+/// <summary>
+/// Tests for the native library as it is actually built and shipped: these load the real
+/// libcictna_ua / cictna_ua.dll from runtimes/&lt;rid&gt;/native in the test output, so they
+/// verify the packaging and loading path as well as the code.
+/// </summary>
+/// <remarks>
+/// Run on every platform in CI (Windows and Linux). A failure here means the native binary and
+/// the managed assembly do not belong together, or the native build used the wrong options.
+/// The loopback tests open real TCP sockets on 127.0.0.1 with ports chosen by the OS.
+/// </remarks>
 public sealed class OpcUaNativeLibraryTests
 {
+    // Guards against a stale native binary next to a newer assembly (or the reverse).
     [Fact]
     public void AbiVersionMatchesManagedExpectation()
     {
@@ -12,6 +23,8 @@ public sealed class OpcUaNativeLibraryTests
         OpcUaNativeLibrary.EnsureCompatible();
     }
 
+    // The binary must be built from exactly the version pinned in native/versions.env,
+    // so a forgotten rebuild after a version bump is caught.
     [Fact]
     public void StackVersionIsThePinnedOpen62541Release()
     {
@@ -22,6 +35,8 @@ public sealed class OpcUaNativeLibraryTests
         Assert.Equal(pinned, OpcUaNativeLibrary.StackVersion);
     }
 
+    // A build without encryption would still connect with SecurityPolicy None and look fine,
+    // then fail on the first real plant. Make that impossible to ship.
     [Fact]
     public void EncryptionIsMbedTls()
     {
@@ -46,6 +61,9 @@ public sealed class OpcUaNativeLibraryTests
         Assert.Equal(expected, OpcUaNativeLibrary.GetStatusName(code));
     }
 
+    // End to end on this machine: listen socket, secure channel, session, Read service,
+    // binary decoding of a DateTime, clean disconnect. The time must be "now", which also
+    // proves the 1601-epoch conversion in C#.
     [Fact]
     public void LoopbackServerAndClientExchangeTheServerTime()
     {
@@ -58,6 +76,8 @@ public sealed class OpcUaNativeLibraryTests
         Assert.InRange(result.ServerTime.Value, before, after);
     }
 
+    // Failure path: the server cannot bind, so the call must come back with a Bad status
+    // within its timeout. Hanging or crashing here would hang a health check in production.
     [Fact]
     public void LoopbackReportsAFailureInsteadOfHangingWhenThePortIsTaken()
     {

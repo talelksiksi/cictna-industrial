@@ -24,6 +24,13 @@ Proprietary, all rights reserved (see [LICENSE](LICENSE) and [THIRD-PARTY-NOTICE
 
 A phase closes only when its exit criteria pass on Windows and Linux. See [CHANGELOG.md](CHANGELOG.md).
 
+## Documentation
+
+- [docs/pc-steps.md](docs/pc-steps.md): what has to be done on the Windows PC, with status
+- [docs/builds/](docs/builds/): one record per build (what, from which commit, verified where)
+- [docs/native-layer.md](docs/native-layer.md): how open62541 is built, wrapped and loaded
+- [docs/coding-standards.md](docs/coding-standards.md)
+
 ## Layout
 
 ```
@@ -31,7 +38,7 @@ native/        pinned open62541 + mbedTLS, build scripts, our C shim, licence te
 src/           managed libraries (Cictna.Industrial.*)
 tests/         Unit/, Smoke/ (Integration, Interop, Chaos, Soak, Fuzz come with their phases)
 scripts/       runner setup, licence collection
-docs/          coding standards, native layer notes
+docs/          coding standards, native layer design, PC steps, build records (docs/builds/)
 ```
 
 ## Build
