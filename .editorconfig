@@ -35,3 +35,5 @@ dotnet_naming_style.underscore_camel.capitalization = camel_case
 [tests/**.cs]
 # Test classes are discovered by reflection and never instantiated by our code.
 dotnet_diagnostic.CA1515.severity = none
+# Inline array literals keep tests readable; the allocation cost is irrelevant there.
+dotnet_diagnostic.CA1861.severity = none
