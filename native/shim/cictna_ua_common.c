@@ -136,10 +136,20 @@ uint32_t cictna_ua_create_certificate(const char *common_name, const char *organ
     UA_KeyValueMap_setScalar(&params, UA_QUALIFIEDNAME(0, "key-size-bits"), &bits, &UA_TYPES[UA_TYPES_UINT16]);
     UA_KeyValueMap_setScalar(&params, UA_QUALIFIEDNAME(0, "expires-in-days"), &days, &UA_TYPES[UA_TYPES_UINT16]);
 
+    /* open62541 requires a logger here. A short-lived queue collects anything it logs; the
+     * status code is what reaches the caller. */
+    cictna_log_queue log;
+    cictna_logq_init(&log, 16, CICTNA_UA_LOG_ERROR);
+    UA_Logger *logger = cictna_logq_logger(&log);
     UA_ByteString out_key = UA_BYTESTRING_NULL;
     UA_ByteString out_cert = UA_BYTESTRING_NULL;
-    UA_StatusCode rc = UA_CreateCertificate(NULL, subject, subject_size, san, san_size,
-                                            UA_CERTIFICATEFORMAT_DER, &params, &out_key, &out_cert);
+    UA_StatusCode rc = logger
+        ? UA_CreateCertificate(logger, subject, subject_size, san, san_size,
+                               UA_CERTIFICATEFORMAT_DER, &params, &out_key, &out_cert)
+        : UA_STATUSCODE_BADOUTOFMEMORY;
+    if(logger)
+        logger->clear(logger);
+    cictna_logq_clear(&log);
     UA_KeyValueMap_clear(&params);
     if(rc != UA_STATUSCODE_GOOD) {
         UA_ByteString_clear(&out_key);

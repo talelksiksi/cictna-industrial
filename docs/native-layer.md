@@ -104,6 +104,15 @@ codec follows open62541 where the specification leaves room, and works around th
   native client: Phase 2 reconnection must create a fresh native client (or re-read) so a server
   restarted with a different namespace order is handled correctly.
 
+- Client certificate validation: with an empty trust list open62541 keeps its default, which
+  accepts every certificate. The shim therefore installs an empty in-memory trust store unless
+  AcceptAnyServerCertificateForDevelopment is set, so untrusted server certificates are rejected.
+  The server side still accepts any client certificate; trust lists for both sides are Phase 3.
+- Endpoint switching: open62541's own endpoint selection closes and reopens the channel to change
+  security, which does not work with noReconnect. The client therefore runs GetEndpoints on a
+  separate plain discovery client, chooses the endpoint in C# (EndpointSelector) and passes it in
+  preset, so the secure channel is opened directly.
+
 ## Known limits
 
 - Linux binaries need glibc 2.34 or newer (Ubuntu 22.04+, Debian 12+, recent Raspberry Pi OS),

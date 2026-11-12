@@ -117,7 +117,7 @@ internal sealed partial class ClientWorker : NativeWorker
 
     // ---- connect / disconnect ----------------------------------------------------------
 
-    public async Task ConnectAsync(string endpointUrl, CancellationToken cancellationToken)
+    public async Task ConnectAsync(string endpointUrl, byte[] endpoint, UserTokenType tokenType, CancellationToken cancellationToken)
     {
         var waiter = await InvokeAsync(() =>
         {
@@ -125,7 +125,14 @@ internal sealed partial class ClientWorker : NativeWorker
             {
                 throw new InvalidOperationException($"The client is {_state}; disconnect first.");
             }
-            var status = NativeMethods.ClientConnect(_handle!, endpointUrl);
+            uint status;
+            unsafe
+            {
+                fixed (byte* ep = endpoint)
+                {
+                    status = NativeMethods.ClientConnect(_handle!, endpointUrl, ep, (nuint)endpoint.Length, (int)tokenType);
+                }
+            }
             if (status != 0)
             {
                 throw new OpcUaException(new StatusCode(status), $"Could not start connecting to {endpointUrl}");

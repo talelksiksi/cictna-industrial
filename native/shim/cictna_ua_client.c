@@ -113,10 +113,23 @@ uint32_t cictna_ua_client_new(const cictna_ua_client_options *o, cictna_ua_clien
         UA_ByteString cert = {o->certificate_len, (UA_Byte *)(uintptr_t)o->certificate};
         UA_ByteString key = {o->private_key_len, (UA_Byte *)(uintptr_t)o->private_key};
         rc = UA_ClientConfig_setDefaultEncryption(&cc, cert, key, NULL, 0, NULL, 0);
-        if(rc == UA_STATUSCODE_GOOD && o->accept_any_server_certificate) {
+        if(rc == UA_STATUSCODE_GOOD) {
+            /* Server certificate validation. With an empty trust list open62541 keeps its
+             * default, which accepts every certificate. That is not acceptable outside a lab,
+             * so unless the caller explicitly asked for accept-any (development), install an
+             * in-memory trust store. Empty for now, so it rejects every server certificate;
+             * Phase 3 fills it with the trusted certificates. Secure by default. */
             if(cc.certificateVerification.clear)
                 cc.certificateVerification.clear(&cc.certificateVerification);
-            UA_CertificateGroup_AcceptAll(&cc.certificateVerification);
+            if(o->accept_any_server_certificate) {
+                UA_CertificateGroup_AcceptAll(&cc.certificateVerification);
+            } else {
+                UA_NodeId group = UA_NODEID_NUMERIC(0, UA_NS0ID_SERVERCONFIGURATION_CERTIFICATEGROUPS_DEFAULTAPPLICATIONGROUP);
+                UA_TrustListDataType trust;
+                UA_TrustListDataType_init(&trust);
+                rc = UA_CertificateGroup_Memorystore(&cc.certificateVerification, &group, &trust,
+                                                     cc.logging, NULL);
+            }
         }
     } else
 #endif
@@ -182,9 +195,42 @@ void cictna_ua_client_delete(cictna_ua_client *c) {
     free(c);
 }
 
-uint32_t cictna_ua_client_connect(cictna_ua_client *c, const char *endpoint_url) {
-    if(!endpoint_url)
+uint32_t cictna_ua_client_connect(cictna_ua_client *c, const char *endpoint_url,
+                                  const uint8_t *endpoint, size_t endpoint_len,
+                                  int32_t user_token_type) {
+    if(!endpoint_url || !endpoint || endpoint_len == 0)
         return UA_STATUSCODE_BADINVALIDARGUMENT;
+
+    UA_StatusCode rc;
+    UA_EndpointDescription *ep = (UA_EndpointDescription *)
+        cictna_decode(&UA_TYPES[UA_TYPES_ENDPOINTDESCRIPTION], endpoint, endpoint_len, &rc);
+    if(!ep)
+        return rc;
+
+    /* The user token policy of the endpoint that matches the identity we will present. */
+    const UA_UserTokenPolicy *token = NULL;
+    for(size_t i = 0; i < ep->userIdentityTokensSize; i++) {
+        if((int32_t)ep->userIdentityTokens[i].tokenType == user_token_type) {
+            token = &ep->userIdentityTokens[i];
+            break;
+        }
+    }
+    if(!token) {
+        UA_EndpointDescription_delete(ep);
+        return UA_STATUSCODE_BADIDENTITYTOKENINVALID;
+    }
+
+    /* Preset endpoint and token policy: open62541 uses them as given ("direct definition") and
+     * does not run its own endpoint selection, which would otherwise close and reopen the
+     * channel to switch security, something it cannot do with noReconnect set. */
+    UA_ClientConfig *cfg = UA_Client_getConfig(c->client);
+    UA_UserTokenPolicy_clear(&cfg->userTokenPolicy);
+    rc = UA_UserTokenPolicy_copy(token, &cfg->userTokenPolicy);
+    UA_EndpointDescription_clear(&cfg->endpoint);
+    cfg->endpoint = *ep;           /* move the contents */
+    UA_free(ep);                   /* only the shell, the contents now belong to cfg */
+    if(rc != UA_STATUSCODE_GOOD)
+        return rc;
     return UA_Client_connectAsync(c->client, endpoint_url);
 }
 
@@ -270,9 +316,29 @@ uint32_t cictna_ua_client_get_endpoints(cictna_ua_client *c, const char *url, ui
     *response_len = 0;
     if(!url)
         return UA_STATUSCODE_BADINVALIDARGUMENT;
+
+    /* Discovery runs on its own temporary client with the plain default configuration
+     * (SecurityPolicy None, no certificate). GetEndpoints never needs security, and the main
+     * client's security settings would make open62541 try to switch the discovery channel to an
+     * encrypted one, which fails with noReconnect. Its log lines go to the same queue. */
+    UA_ClientConfig tc;
+    memset(&tc, 0, sizeof(tc));
+    tc.logging = cictna_logq_logger(&c->log);
+    UA_StatusCode rc = UA_ClientConfig_setDefault(&tc);
+    if(rc != UA_STATUSCODE_GOOD) {
+        UA_ClientConfig_clear(&tc);
+        return rc;
+    }
+    tc.timeout = UA_Client_getConfig(c->client)->timeout;
+    tc.noReconnect = true;
+    UA_Client *discovery = UA_Client_newWithConfig(&tc);
+    if(!discovery)
+        return UA_STATUSCODE_BADOUTOFMEMORY;
+
     size_t count = 0;
     UA_EndpointDescription *endpoints = NULL;
-    UA_StatusCode rc = UA_Client_getEndpoints(c->client, url, &count, &endpoints);
+    rc = UA_Client_getEndpoints(discovery, url, &count, &endpoints);
+    UA_Client_delete(discovery);
     if(rc != UA_STATUSCODE_GOOD)
         return rc;
 
