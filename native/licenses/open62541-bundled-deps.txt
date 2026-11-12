@@ -1,0 +1,346 @@
+Licence headers of the third-party files that open62541 bundles in its deps/ folder
+and that are compiled into cictna_ua. Collected from the pinned open62541 sources by
+scripts/collect-native-licenses.py.
+
+==============================================================================
+base64
+==============================================================================
+/*
+ * Base64 encoding/decoding (RFC1341)
+ * Copyright (c) 2005-2011, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2025, Julius Pfrommer (Fraunhofer IOSB)
+ *
+ * This software may be distributed under the terms of the BSD license.
+ * See README for more details.
+ */
+
+==============================================================================
+cj5
+==============================================================================
+// MIT License
+//
+// Copyright (c) 2020 Sepehr Taghdisian
+// Copyright (c) 2022, 2024 Julius Pfrommer
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Very minimal single header JSON5 parser in C99, dervied from jsmn This is the
+// modified version of jsmn library Thus main parts of the code is taken from
+// jsmn project (https://github.com/zserge/jsmn).
+//
+// Compliance with JSON5:
+//  [x] Object keys may be an ECMAScript 5.1 IdentifierName.
+//  [x] Objects may have a single trailing comma.
+//  [x] Strings may be single quoted.
+//  [x] Strings may span multiple lines by escaping new line characters.
+//  [x] Strings may include character escapes.
+//  [x] Numbers may be hexadecimal.
+//  [x] Numbers may have a leading or trailing decimal point.
+//  [x] Numbers may be IEEE 754 positive infinity, negative infinity, and NaN.
+//  [x] Numbers may begin with an explicit plus sign.
+//  [x] Single and multi-line comments are allowed.
+//  [x] Additional white space characters are allowed.
+//
+// Extensions to JSON5 (more permissive):
+//  [x] Root objects can be an array or a primitive value
+//  [x] The root object may omit the surrounding brackets
+//  [x] Hash ('#') comments out until the end of the line.
+//  [x] Strings may include unescaped utf8 bytes
+//  [x] Booleans and null are case-insensitive
+//  [x] Optionally: Stop early when the first encountered JSON element (object,
+//      array, value) has been successfully parsed. Do not return an error when
+//      the input string was not processed to its full length. This allows the
+//      detection of JSON sub-strings as part of an input "lexer".
+//
+// Usage:
+//  The main function to parse json is `cj5_parse`. Like in jsmn, you provide
+//  all tokens to be filled as an array and provide the maximum count The result
+//  will be return in `cj5_result` struct, and `num_tokens` will represent the
+//  actual token count that is parsed. In case of errors, cj_result.error will
+//  be set to an error code Here's a quick example of the usage.
+//  
+//  #include "cj5.h"
+//
+//  cj5_token tokens[32];
+//  cj5_result r = cj5_parse(g_json, (int)strlen(g_json), tokens, 32, NULL);
+//  if(r.error != CJ5_ERROR_NONE) {
+//      if(r.error == CJ5_ERROR_OVERFLOW) {
+//          // you can use r.num_tokens to determine the actual token count and reparse
+//          printf("Error: line: %d, col: %d\n", r.error_line, r.error_code);    
+//      }
+//  }
+
+==============================================================================
+dtoa
+==============================================================================
+// Copyright 2013, Andreas Samoljuk
+// Copyright 2023, Julius Pfrommer
+//
+// Boost Software License - Version 1.0 - August 17th, 2003
+//
+// Permission is hereby granted, free of charge, to any person or organization
+// obtaining a copy of the software and accompanying documentation covered by
+// this license (the "Software") to use, reproduce, display, distribute,
+// execute, and transmit the Software, and to prepare derivative works of the
+// Software, and to permit third-parties to whom the Software is furnished to
+// do so, all subject to the following:
+//
+// The copyright notices in the Software and this entire statement, including
+// the above license grant, this restriction and the following disclaimer,
+// must be included in all copies of the Software, in whole or in part, and
+// all derivative works of the Software, unless such copies or derivative
+// works are solely in the form of machine-executable object code generated by
+// a source language processor.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+// SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+// FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+==============================================================================
+itoa
+==============================================================================
+/*
+ * Copyright 2017 Techie Delight
+ * Permission is hereby granted, free of charge, to any person obtaining a copy 
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights 
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
+ * copies of the Software, and to permit persons to whom the Software is 
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included 
+ * in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS 
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF 
+ * OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+==============================================================================
+libc_time
+==============================================================================
+/* Originally released by the musl project (http://www.musl-libc.org/) under the
+ * MIT license. Taken from the file /src/time/__secs_to_tm.c */
+
+==============================================================================
+mp_printf
+==============================================================================
+/**
+ * @author (c) Eyal Rozenberg <eyalroz1@gmx.com>
+ *             2021-2023, Haifa, Palestine/Israel
+ * @author (c) Marco Paland (info@paland.com)
+ *             2014-2019, PALANDesign Hannover, Germany
+ *
+ * @note Others have made smaller contributions to this file: see the
+ * contributors page at https://github.com/eyalroz/printf/graphs/contributors
+ * or ask one of the authors.
+ *
+ * @brief Small stand-alone implementation of the printf family of functions
+ * (`(v)printf`, `(v)s(n)printf` etc., geared towards use on embedded systems with
+ * a very limited resources.
+ *
+ * @note the implementations are thread-safe; re-entrant; use no functions from
+ * the standard library; and do not dynamically allocate any memory.
+ *
+ * @license The MIT License (MIT)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+==============================================================================
+musl_inet_pton
+==============================================================================
+/* musl as a whole is licensed under the following standard MIT license:
+*
+ * ----------------------------------------------------------------------
+ * Copyright © 2005-2020 Rich Felker, et al.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *----------------------------------------------------------------------
+ */
+
+==============================================================================
+open62541_queue
+==============================================================================
+/*
+ * Copyright (c) 1991, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)queue.h	8.5 (Berkeley) 8/20/94
+ */
+
+==============================================================================
+parse_num
+==============================================================================
+/* Originally released by the musl project (http://www.musl-libc.org/) under the
+ * MIT license. Taken and adapted from the file src/stdlib/atoi.c 
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+==============================================================================
+pcg_basic
+==============================================================================
+/*
+ * PCG Random Number Generation for C.
+ *
+ * Copyright 2014 Melissa O'Neill <oneill@pcg-random.org>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * For additional information about the PCG random number generation scheme,
+ * including its license and other licensing options, visit
+ *
+ *     http://www.pcg-random.org
+ */
+
+==============================================================================
+utf8
+==============================================================================
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ *    Copyright 2024 (c) Fraunhofer IOSB (Author: Julius Pfrommer)
+ */
+
+==============================================================================
+yxml
+==============================================================================
+/* Copyright (c) 2013-2014 Yoran Heling
+
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+==============================================================================
+ziptree
+==============================================================================
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+ *
+ *    Copyright 2018, 2021-2022 (c) Julius Pfrommer
+ */

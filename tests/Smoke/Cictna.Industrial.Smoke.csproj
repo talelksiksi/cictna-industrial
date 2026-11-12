@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Phase 0 smoke test. A plain console app on purpose: it needs no test framework,
+    so it runs on a clean machine with only the .NET runtime. Exit code 0 means pass.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cictna.Industrial.OpcUa.Native\Cictna.Industrial.OpcUa.Native.csproj" />
+  </ItemGroup>
+
+</Project>

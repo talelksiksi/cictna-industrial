@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Cictna.Industrial.OpcUa.Native/Cictna.Industrial.OpcUa.Native.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Smoke/">
+    <Project Path="tests/Smoke/Cictna.Industrial.Smoke.csproj" />
+  </Folder>
+  <Folder Name="/tests/Unit/">
+    <Project Path="tests/Unit/Cictna.Industrial.OpcUa.Native.Tests/Cictna.Industrial.OpcUa.Native.Tests.csproj" />
+  </Folder>
+</Solution>

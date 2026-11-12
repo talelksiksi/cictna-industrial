@@ -1,0 +1,13 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+.vscode/
+TestResults/
+artifacts/
+
+# Native build (sources are fetched and built by native/build.*)
+native/.deps/
+native/.build/
+native/out/

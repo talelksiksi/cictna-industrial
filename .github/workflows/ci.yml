@@ -1,0 +1,166 @@
+name: CI
+
+# CI runs on demand (Actions tab > CI > Run workflow) and on release tags, never on
+# every push. Day-to-day checks happen locally with `dotnet test` before pushing.
+#
+# Runners:
+#  - Windows jobs run on the self-hosted runner on Talel's PC (free, no minutes used).
+#  - Linux jobs default to GitHub-hosted ubuntu-24.04 (about 5 minutes a run at the 1x rate).
+#    To move them to a self-hosted Linux runner, set the repository variable
+#    LINUX_RUNS_ON to a JSON label list, e.g. ["self-hosted","linux","x64"].
+#  - WINDOWS_RUNS_ON overrides the Windows labels the same way.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  native-linux:
+    name: Native (linux-x64, linux-arm64)
+    runs-on: ${{ fromJSON(vars.LINUX_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache native build output
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: native/out
+          key: native-linux-${{ hashFiles('native/versions.env', 'native/build.sh', 'native/shim/**', 'native/toolchains/**') }}
+
+      - name: Install cross compiler and emulator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build gcc-aarch64-linux-gnu g++-aarch64-linux-gnu qemu-user-static
+
+      - name: Build linux-x64
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: native/build.sh linux-x64
+
+      - name: Build linux-arm64
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: native/build.sh linux-arm64
+
+      - name: Native smoke test (x64 and arm64 under qemu)
+        run: |
+          gcc -o /tmp/native-smoke native/tests/native_smoke.c -ldl
+          aarch64-linux-gnu-gcc -o /tmp/native-smoke-arm64 native/tests/native_smoke.c -ldl
+          /tmp/native-smoke native/out/linux-x64/libcictna_ua.so
+          qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/native-smoke-arm64 native/out/linux-arm64/libcictna_ua.so
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-linux
+          path: native/out/
+          if-no-files-found: error
+
+  native-windows:
+    name: Native (win-x64)
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '["self-hosted","windows","x64"]') }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache native build output
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: native/out
+          key: native-windows-${{ hashFiles('native/versions.env', 'native/build.ps1', 'native/shim/**') }}
+
+      - name: Build win-x64
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: powershell
+        run: native\build.ps1
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-windows
+          path: native/out/
+          if-no-files-found: error
+
+  managed:
+    name: Managed build and tests (${{ matrix.name }})
+    needs: [native-linux, native-windows]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            runs-on: ${{ vars.LINUX_RUNS_ON || '"ubuntu-24.04"' }}
+          - name: win-x64
+            runs-on: ${{ vars.WINDOWS_RUNS_ON || '["self-hosted","windows","x64"]' }}
+    runs-on: ${{ fromJSON(matrix.runs-on) }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: native-*
+          path: native/out
+          merge-multiple: true
+
+      - name: Build
+        run: dotnet build Cictna.Industrial.slnx -c Release
+
+      - name: Unit tests
+        run: dotnet test --solution Cictna.Industrial.slnx -c Release --no-build
+
+      - name: Smoke test
+        run: dotnet run --project tests/Smoke -c Release --no-build
+
+  package:
+    name: Pack and publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: managed
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: native-*
+          path: native/out
+          merge-multiple: true
+
+      - name: Pack (all runtimes required)
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          dotnet pack src/Cictna.Industrial.OpcUa.Native -c Release -o artifacts \
+            -p:RequireAllNativeRuntimes=true -p:Version="$version"
+
+      - name: Publish to GitHub Packages
+        run: |
+          dotnet nuget push "artifacts/*.nupkg" \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: artifacts/*.nupkg

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Native open62541 binaries (with mbedTLS) and low-level bindings for Cictna.Industrial.OpcUa.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NativeOutDir>$(MSBuildThisFileDirectory)..\..\native\out\</NativeOutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Licence texts of open62541, its bundled dependencies and mbedTLS travel with the binaries. -->
+    <None Include="..\..\native\licenses\*.txt" Pack="true" PackagePath="licenses" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cictna.Industrial.OpcUa" />
+  </ItemGroup>
+
+  <!--
+    Native binaries built by native/build.sh and native/build.ps1.
+    Each RID that has been built locally (or downloaded from CI) is copied to
+    runtimes/<rid>/native/ in the output and packed at the same path in the NuGet package.
+    `dotnet pack -p:RequireAllNativeRuntimes=true` fails if any RID is missing (used for releases).
+  -->
+  <ItemGroup>
+    <NativeRuntime Include="win-x64" LibFile="cictna_ua.dll" />
+    <NativeRuntime Include="linux-x64" LibFile="libcictna_ua.so" />
+    <NativeRuntime Include="linux-arm64" LibFile="libcictna_ua.so" />
+  </ItemGroup>
+
+  <Target Name="IncludeNativeRuntimes" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <_NativeFile Include="@(NativeRuntime->'$(NativeOutDir)%(Identity)\%(LibFile)')" Rid="%(Identity)" />
+      <_NativeFilePresent Include="@(_NativeFile)" Condition="Exists('%(_NativeFile.Identity)')" />
+      <_NativeFileMissing Include="@(_NativeFile)" Condition="!Exists('%(_NativeFile.Identity)')" />
+      <None Include="@(_NativeFilePresent)"
+            Link="runtimes\%(_NativeFilePresent.Rid)\native\%(_NativeFilePresent.Filename)%(_NativeFilePresent.Extension)"
+            CopyToOutputDirectory="PreserveNewest"
+            Pack="true"
+            PackagePath="runtimes/%(_NativeFilePresent.Rid)/native" />
+    </ItemGroup>
+    <Error Condition="'$(RequireAllNativeRuntimes)' == 'true' and '@(_NativeFileMissing)' != ''"
+           Text="Native library missing: @(_NativeFileMissing). Build it with native/build.sh or native/build.ps1." />
+  </Target>
+
+</Project>
