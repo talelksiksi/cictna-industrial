@@ -116,6 +116,7 @@ test_log="$logs/unit_tests.log"
 tests_total=$(sed -n 's/^ *total: *//p' "$test_log" | tail -1)
 tests_failed=$(sed -n 's/^ *failed: *//p' "$test_log" | tail -1)
 tests_passed=$(sed -n 's/^ *succeeded: *//p' "$test_log" | tail -1)
+tests_skipped=$(sed -n 's/^ *skipped: *//p' "$test_log" | tail -1)
 
 info() { sed -n "s/^$2: //p" "native/out/$1/build-info.txt" 2>/dev/null; }
 
@@ -162,7 +163,7 @@ native_row() {
     echo "| ${step_names[$i]} | ${step_status[$i]} | ${step_secs[$i]} |"
   done
   echo
-  echo "Unit tests: ${tests_passed:-?} passed, ${tests_failed:-?} failed, ${tests_total:-?} total."
+  echo "Tests: ${tests_passed:-?} passed, ${tests_failed:-?} failed, ${tests_skipped:-0} skipped, ${tests_total:-?} total."
   echo
   echo "Managed smoke test output:"
   echo
