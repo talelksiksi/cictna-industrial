@@ -96,6 +96,14 @@ codec follows open62541 where the specification leaves room, and works around th
   while the empty form is 3. Harmless in real messages, which always continue after such an
   array; noted here in case it ever shows up in a log.
 
+- Namespace mapping in the client: open62541 1.5 keeps a client-side namespace table filled from
+  the server's NamespaceArray at the first connect, and translates indexes in every value. With
+  no predefined namespaces (our setup) the mapping is the identity for all namespaces the server
+  has; an index the server does not have is mapped to 65535 minus the index, so it can never
+  silently point at the wrong namespace. The table is not re-read on a later connect of the same
+  native client: Phase 2 reconnection must create a fresh native client (or re-read) so a server
+  restarted with a different namespace order is handled correctly.
+
 ## Known limits
 
 - Linux binaries need glibc 2.34 or newer (Ubuntu 22.04+, Debian 12+, recent Raspberry Pi OS),

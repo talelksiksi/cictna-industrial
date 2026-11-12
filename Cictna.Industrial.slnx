@@ -5,6 +5,9 @@
     <Project Path="src/Cictna.Industrial.OpcUa/Cictna.Industrial.OpcUa.csproj" />
   </Folder>
   <Folder Name="/tests/" />
+  <Folder Name="/tests/Integration/">
+    <Project Path="tests/Integration/Cictna.Industrial.OpcUa.IntegrationTests/Cictna.Industrial.OpcUa.IntegrationTests.csproj" />
+  </Folder>
   <Folder Name="/tests/Smoke/">
     <Project Path="tests/Smoke/Cictna.Industrial.Smoke.csproj" />
   </Folder>
