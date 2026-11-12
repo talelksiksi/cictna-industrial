@@ -75,7 +75,7 @@ run_step() {
 run_step "native linux-x64"   native/build.sh linux-x64 $clean
 run_step "native linux-arm64" native/build.sh linux-arm64 $clean
 run_step "dotnet build"       dotnet build Cictna.Industrial.slnx -c Release
-run_step "unit tests"         dotnet test --solution Cictna.Industrial.slnx -c Release --no-build
+run_step "tests"              dotnet test --solution Cictna.Industrial.slnx -c Release --no-build
 run_step "managed smoke"      dotnet run --project tests/Smoke -c Release --no-build
 
 smoke_bin="$logs/native-smoke"
@@ -112,7 +112,7 @@ else
 fi
 [[ -z "$changes" ]] && changes="- (no new commits)"
 
-test_log="$logs/unit_tests.log"
+test_log="$logs/tests.log"
 tests_total=$(sed -n 's/^ *total: *//p' "$test_log" | tail -1)
 tests_failed=$(sed -n 's/^ *failed: *//p' "$test_log" | tail -1)
 tests_passed=$(sed -n 's/^ *succeeded: *//p' "$test_log" | tail -1)
@@ -187,7 +187,7 @@ native_row() {
   echo
   echo "| Platform | Status |"
   echo "|---|---|"
-  echo "| linux-x64 | $([[ ${step_status[0]} == PASS && ${step_status[3]} == PASS && ${step_status[4]} == PASS ]] && echo 'verified here: native build, unit tests, managed and native smoke' || echo 'FAILED here, see steps') |"
+  echo "| linux-x64 | $([[ ${step_status[0]} == PASS && ${step_status[3]} == PASS && ${step_status[4]} == PASS ]] && echo "verified here: native build, all test suites, managed and native smoke" || echo 'FAILED here, see steps') |"
   arm_status="cross-built"
   for i in "${!step_names[@]}"; do
     [[ "${step_names[$i]}" == "native smoke arm64 (qemu)" ]] && arm_status="cross-built, native smoke ${step_status[$i]} under qemu; managed tests not run on ARM64 hardware"
