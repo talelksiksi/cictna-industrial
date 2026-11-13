@@ -10,6 +10,24 @@ Legend: `[ ]` to do, `[x]` done.
 
 ## Open
 
+### 0. Two GitHub accounts side by side (once)
+The work account `talel-CICT` stays the active one in GitHub CLI; repos under `source\personal`
+use `talelksiksi` automatically, so there is no switching back and forth.
+- [ ] `gh --version` is 2.40 or newer (otherwise `winget upgrade GitHub.cli`).
+- [ ] `gh auth login` as **talelksiksi** (GitHub.com, HTTPS, Yes, web browser), then
+  `gh auth switch --user talel-CICT`. `gh auth status` lists both, `talel-CICT` active.
+- [ ] Append to `%USERPROFILE%\.gitconfig-personal`:
+  ```
+  [credential "https://github.com"]
+  	helper =
+  	helper = "!f() { test \"$1\" = get && echo username=talelksiksi && echo \"password=$(gh auth token --user talelksiksi)\"; }; f"
+  ```
+- [ ] In `source\personal\get-latest.cmd`, under `cd /d "%~dp0"`, add:
+  `for /f "delims=" %%t in ('gh auth token --user talelksiksi') do set GH_TOKEN=%%t`
+- [ ] For gh commands on personal repos from a terminal, prefix with the personal token, e.g.
+  `$env:GH_TOKEN = gh auth token --user talelksiksi; gh workflow run CI -R talelksiksi/cictna-industrial; Remove-Item Env:GH_TOKEN`.
+  The runner setup script does this by itself.
+
 ### 1. Get the repository
 - [ ] Run `C:\Users\talel\source\personal\get-latest.cmd`.
   It now includes `cictna-industrial` and clones it to `C:\Users\talel\source\personal\cictna-industrial`.
@@ -52,7 +70,7 @@ Open a new PowerShell and run each line. The expected result is on the right.
   ```
   Expected: `native\out\win-x64\cictna_ua.dll`, then `failed: 0` (105 passed with Node.js,
   5 Prosys tests skipped until step 5), then `SMOKE OK`.
-- [ ] On GitHub: Actions > CI > Run workflow (or `gh workflow run CI -R talelksiksi/cictna-industrial`).
+- [ ] On GitHub: Actions > CI > Run workflow (or from a terminal, see step 0 for the GH_TOKEN prefix).
   All jobs green closes Phase 0. If something fails, tell Claude; it reads the log and fixes it.
 
 ### 5. Prosys interop (closes Phase 1)
