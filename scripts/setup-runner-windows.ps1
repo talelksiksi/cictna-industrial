@@ -58,6 +58,16 @@ Ok "CMake $cmakeVersion"
 if ($LASTEXITCODE -ne 0) { Fail 'GitHub CLI is not logged in. Run: gh auth login' }
 Ok 'GitHub CLI logged in'
 
+# The PC may keep another account active in gh; this repository uses the talelksiksi account. Use
+# its token for this script only (process environment), without switching the active account.
+$personalToken = (& gh auth token --user talelksiksi 2>$null)
+if ($LASTEXITCODE -eq 0 -and $personalToken) {
+    $env:GH_TOKEN = $personalToken.Trim()
+    Ok 'Using the talelksiksi account for this script'
+} else {
+    Fail 'The talelksiksi account is not stored in gh. Run: gh auth login (as talelksiksi), then gh auth switch --user <other account>. See docs/pc-steps.md.'
+}
+
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $vs = if (Test-Path $vswhere) {
     & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property displayName
