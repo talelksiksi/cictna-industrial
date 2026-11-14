@@ -45,7 +45,7 @@ docs/          coding standards, native layer design, PC steps, build records (d
 
 ## Build
 
-Prerequisites: .NET 10 SDK, Git, CMake 3.20+. Node.js 22.13+ for the node-opcua interop tests (skipped without it).
+Prerequisites: .NET 10 SDK, Git, CMake 3.20+, Python 3 (open62541 generates code with it). Node.js 22.13+ for the node-opcua interop tests (skipped without it).
 Linux also needs `gcc`, `ninja-build`; ARM64 cross-builds need `gcc-aarch64-linux-gnu` (and `qemu-user-static` to test).
 Windows needs Visual Studio 2022+ or the Build Tools with "Desktop development with C++".
 

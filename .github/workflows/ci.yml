@@ -81,6 +81,13 @@ jobs:
           path: native/out
           key: native-windows-${{ hashFiles('native/versions.env', 'native/build.ps1', 'native/shim/**') }}
 
+      # open62541 generates code with Python 3 at build time. Installed per run, so the runner
+      # service needs no Python of its own (it cannot see per-user installs anyway).
+      - uses: actions/setup-python@v7
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          python-version: '3.12'
+
       - name: Build win-x64
         if: steps.cache.outputs.cache-hit != 'true'
         shell: powershell
