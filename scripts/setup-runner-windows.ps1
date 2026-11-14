@@ -9,7 +9,8 @@
 
   What it does:
    1. Checks the build prerequisites: Git, CMake 3.20+, GitHub CLI (logged in),
-      Visual Studio or Build Tools with the C++ workload.
+      Visual Studio or Build Tools with the C++ workload. Install CMake and Python 3 for ALL
+      users: the runner service runs as NETWORK SERVICE and cannot see per-user installs.
    2. Gets a one-time registration token for this repository through the GitHub CLI.
    3. Downloads the latest runner, checks its SHA-256, unpacks it into C:\ar\cictna.
       (A short path on purpose: the native build nests deep and Windows has a 260-character limit.)
@@ -124,9 +125,32 @@ if (-not $NoService) { $configArgs += '--runasservice' }
 Push-Location $InstallDir
 try {
     & .\config.cmd @configArgs
-    if ($LASTEXITCODE -ne 0) { Fail 'Runner registration failed (see the output above).' }
+    $configExit = $LASTEXITCODE
 } finally {
     Pop-Location
+}
+if (-not (Test-Path (Join-Path $InstallDir '.runner'))) {
+    Fail 'Runner registration failed (see the output above).'
+}
+
+if (-not $NoService) {
+    # On non-English Windows the runner configures its service with the localized account name
+    # (for example "AUTORITE NT\SERVICE RÉSEAU"), and the service then fails to start with
+    # error 1068. Re-assign the same account by its language-independent name and start it.
+    # (sc.exe cannot be used for this from Windows PowerShell 5.1: it drops the empty password.)
+    $service = Get-Service 'actions.runner.*' | Where-Object { $_.Name -like "*$($env:COMPUTERNAME)-cictna" } | Select-Object -First 1
+    if (-not $service) { Fail 'The runner service was not created (see the output above).' }
+    $result = Get-CimInstance Win32_Service -Filter "Name='$($service.Name)'" |
+        Invoke-CimMethod -MethodName Change -Arguments @{ StartName = 'NT AUTHORITY\NetworkService'; StartPassword = '' }
+    if ($result.ReturnValue -ne 0) { Fail "Could not set the service account (code $($result.ReturnValue))." }
+    try {
+        Start-Service $service.Name -ErrorAction Stop
+    } catch {
+        Fail "The runner is registered but its service does not start: $($_.Exception.Message). See C:\ar\cictna\_diag."
+    }
+    Ok "Service $($service.Name) running as NetworkService"
+} elseif ($configExit -ne 0) {
+    Fail 'Runner registration failed (see the output above).'
 }
 
 Write-Host ''

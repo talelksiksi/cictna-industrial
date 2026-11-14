@@ -10,74 +10,16 @@ Legend: `[ ]` to do, `[x]` done.
 
 ## Open
 
-### 0. Two GitHub accounts side by side (once)
-The work account `talel-CICT` stays the active one in GitHub CLI; repos under `source\personal`
-use `talelksiksi` automatically, so there is no switching back and forth.
-- [ ] `gh --version` is 2.40 or newer (otherwise `winget upgrade GitHub.cli`).
-- [ ] `gh auth login` as **talelksiksi** (GitHub.com, HTTPS, Yes, web browser), then
-  `gh auth switch --user talel-CICT`. `gh auth status` lists both, `talel-CICT` active.
-- [ ] Append to `%USERPROFILE%\.gitconfig-personal`:
-  ```
-  [credential "https://github.com"]
-  	helper =
-  	helper = "!f() { test \"$1\" = get && echo username=talelksiksi && echo \"password=$(gh auth token --user talelksiksi)\"; }; f"
-  ```
-- [ ] In `source\personal\get-latest.cmd`, under `cd /d "%~dp0"`, add:
-  `for /f "delims=" %%t in ('gh auth token --user talelksiksi') do set GH_TOKEN=%%t`
-- [ ] For gh commands on personal repos from a terminal, prefix with the personal token, e.g.
-  `$env:GH_TOKEN = gh auth token --user talelksiksi; gh workflow run CI -R talelksiksi/cictna-industrial; Remove-Item Env:GH_TOKEN`.
-  The runner setup script does this by itself.
-
-### 1. Get the repository
-- [ ] Run `C:\Users\talel\source\personal\get-latest.cmd`.
-  It now includes `cictna-industrial` and clones it to `C:\Users\talel\source\personal\cictna-industrial`.
-- [ ] Inside that folder, run `git config user.email`.
-  Expected: `6784031+talelksiksi@users.noreply.github.com`.
-  If it shows the work address, stop and tell Claude before committing anything.
-
-### 2. Check the build tools
-Open a new PowerShell and run each line. The expected result is on the right.
-
-| Command | Expected |
-|---|---|
-| `dotnet --list-sdks` | a `10.0.x` line (10.0.103 and 10.0.201 were seen on 12 Nov) |
-| `git --version` | any recent version |
-| `cmake --version` | 3.20 or newer. If missing: install from cmake.org, tick "Add CMake to the system PATH" |
-| `gh auth status` | "Logged in to github.com account talelksiksi" |
-
-- [ ] Python 3 for all users (open62541 generates code with it; the CI runner service cannot see
-  a per-user Python). Admin PowerShell:
-  `winget install --id Python.Python.3.12 -e --scope machine`
-- [ ] Visual Studio Installer: Modify your Visual Studio (or Build Tools) and make sure the
-  workload **Desktop development with C++** is ticked. The native library is built with MSVC.
-
-### 3. Install the CI runner (once)
-- [ ] Open PowerShell **as administrator**, then:
-  ```powershell
-  cd C:\Users\talel\source\personal\cictna-industrial
-  powershell -ExecutionPolicy Bypass -File scripts\setup-runner-windows.ps1
-  ```
-  The script checks step 2 again, verifies the runner download's checksum, registers the
-  runner for this repository only and installs it as a Windows service (it starts with the PC).
-  It installs to `C:\ar\cictna` (short path on purpose, Windows has a 260-character path limit).
-- [ ] Check on GitHub: repository > Settings > Actions > Runners shows `TALEL-PC-NEW-cictna` as Idle.
-
-### 4. First Windows build (closes Phase 0 and the Windows half of Phase 1)
-- [ ] Optional but recommended: install Node.js 22 LTS (nodejs.org), so the node-opcua interop
-  tests also run locally. Without it they are skipped locally; CI installs Node.js itself.
-- [ ] Locally, in the repo folder:
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File native\build.ps1
-  dotnet test -c Release
-  dotnet run --project tests\Smoke -c Release
-  ```
-  Expected: `native\out\win-x64\cictna_ua.dll`, then `failed: 0` (105 passed with Node.js,
-  5 Prosys tests skipped until step 5), then `SMOKE OK`.
-- [ ] On GitHub: Actions > CI > Run workflow (or from a terminal, see step 0 for the GH_TOKEN prefix).
-  All jobs green closes Phase 0. If something fails, tell Claude; it reads the log and fixes it.
-
 ### 5. Prosys interop (closes Phase 1)
 Phase 1's exit criteria include the Prosys OPC UA Simulation Server, which is installed on the PC.
+- [ ] Get the latest code and build the native library locally (once, a few minutes), in a normal
+  PowerShell:
+  ```powershell
+  cd C:\Users\talel\source\personal\cictna-industrial
+  git pull
+  powershell -ExecutionPolicy Bypass -File native\build.ps1
+  ```
+  It ends with `== done: ...\native\out\win-x64\cictna_ua.dll`.
 - [ ] Start the Prosys OPC UA Simulation Server. Note its endpoint URL from the Status tab, usually
   `opc.tcp://<pc-name>:53530/OPCUA/SimulationServer`.
 - [ ] In PowerShell, in the repo folder:
@@ -103,6 +45,22 @@ Phase 1's exit criteria include the Prosys OPC UA Simulation Server, which is in
 ---
 
 ## Done
+
+- [x] 2026-11-14: First green CI run on Windows and Linux (run 43542102950): native win-x64 built
+  with MSVC on the self-hosted runner, 110 tests on Windows (105 passed, 5 Prosys skipped, 0
+  failed), smoke test OK on both. Closes Phase 0.
+- [x] 2026-11-14: CI runner installed as a Windows service (`C:\ar\cictna`), running as
+  NetworkService. Lessons, now handled by the scripts: the French service account name blocked
+  the service start (re-assigned by its language-independent name); the service cannot see
+  per-user installs, so build.ps1 finds CMake and Python itself and Python 3.13 is installed
+  for all users (`C:\Program Files\Python313`; the per-user 3.12 could not be duplicated).
+- [x] 2026-11-13: CMake 4.4.4 installed (winget); Visual Studio Community 2026 with the C++
+  workload present. (Talel.)
+- [x] 2026-11-13: Two GitHub accounts side by side: `talel-CICT` stays active in gh,
+  `talelksiksi` stored next to it. `.gitconfig-personal` uses the talelksiksi token for every
+  repo under `source\personal`; `get-latest.cmd` sets GH_TOKEN for its own window. For gh
+  commands on personal repos: `$env:GH_TOKEN = gh auth token --user talelksiksi; <command>;
+  Remove-Item Env:GH_TOKEN`. (Talel, steps from Claude.)
 
 - [x] 2026-11-12: Git identity split. `C:\Users\talel\.gitconfig` now includes
   `~/.gitconfig-personal` for every repo under `source/personal/`, so commits there use the
