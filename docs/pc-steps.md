@@ -38,6 +38,10 @@ Phase 1's exit criteria include the Prosys OPC UA Simulation Server, which is in
 
 ## Optional
 
+- [ ] Delete `C:\WINDOWS\ServiceProfiles\NetworkService\.dotnet` (an admin PowerShell:
+  `Remove-Item -Recurse -Force C:\WINDOWS\ServiceProfiles\NetworkService\.dotnet`). Early CI runs
+  installed the .NET SDK there; since 14 Nov CI installs it into the runner's tool cache instead,
+  so nothing uses that folder.
 - [ ] Self-hosted Linux runner instead of GitHub-hosted Ubuntu: only if CI minutes ever become a
   concern. Set the repository variable `LINUX_RUNS_ON` to `["self-hosted","linux","x64"]` after
   installing a Linux runner (WSL or a spare machine).
