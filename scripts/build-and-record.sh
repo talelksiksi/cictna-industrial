@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/build-and-record.sh: build everything, verify it, and write a build record.
 #
-#   scripts/build-and-record.sh "<title>" [--notes notes.md] [--clean]
+#   scripts/build-and-record.sh "<title>" [--notes notes.md] [--clean] [--ci-run <run id>]
 #
 # Every build we deliver gets a numbered record in docs/builds/ (see the README
 # there). This script is the only way records are written, so a record always
@@ -16,9 +16,9 @@
 #   5. the native smoke test, x64 directly and ARM64 under qemu (if installed)
 #   6. dotnet pack of the native package
 #
-# Windows: the win-x64 section is filled from native/out/win-x64/build-info.txt
-# when present (built on the PC, or downloaded from a CI run), otherwise marked
-# as pending. Windows verification itself happens in CI on the self-hosted runner.
+# Windows: with --ci-run, the win-x64 rows are filled from that GitHub Actions run
+# (job results, test counts and the build-info the job printed), read with gh.
+# Otherwise from native/out/win-x64/build-info.txt when present, else "pending".
 #
 # Workflow: commit the code first, run this script, then commit the record:
 #   git commit ...; scripts/build-and-record.sh "Phase 1: client read/write"
@@ -34,9 +34,11 @@ cd "$root"
 title=""
 notes_file=""
 clean=""
+ci_run=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --notes) notes_file="$2"; shift 2 ;;
+    --ci-run) ci_run="$2"; shift 2 ;;
     --clean) clean="--clean"; shift ;;
     -*) echo "unknown option $1" >&2; exit 2 ;;
     *) title="$1"; shift ;;
@@ -120,6 +122,29 @@ tests_skipped=$(sed -n 's/^ *skipped: *//p' "$test_log" | tail -1)
 
 info() { sed -n "s/^$2: //p" "native/out/$1/build-info.txt" 2>/dev/null; }
 
+# ---- Windows results from a CI run (optional) ---------------------------------------------------
+repo_slug="talelksiksi/cictna-industrial"
+ci_url=""; ci_win_native=""; ci_win_tests=""; ci_win_counts=""; ci_win_smoke=""
+win_info="$logs/ci-win-build-info.txt"
+if [[ -n "$ci_run" ]]; then
+  ci_url="https://github.com/$repo_slug/actions/runs/$ci_run"
+  job() { gh run view "$ci_run" -R "$repo_slug" --json jobs --jq ".jobs[] | select(.name==\"$1\") | \"\(.databaseId) \(.conclusion)\""; }
+  read -r native_id ci_win_native <<<"$(job 'Native (win-x64)')"
+  read -r tests_id ci_win_tests <<<"$(job 'Managed build and tests (win-x64)')"
+  if [[ -n "$native_id" ]]; then
+    gh run view "$ci_run" -R "$repo_slug" --job "$native_id" --log 2>/dev/null | cut -f3- \
+      | sed 's/^[0-9T:.Z-]* //' | grep -E '^(rid|built_utc|repo_commit|compiler|file|size_bytes|sha256): ' > "$win_info" || true
+  fi
+  if [[ -n "$tests_id" ]]; then
+    tests_log="$(gh run view "$ci_run" -R "$repo_slug" --job "$tests_id" --log 2>/dev/null | cut -f3- | sed 's/^[0-9T:.Z-]* //; s/\x1b\[[0-9;]*m//g')"
+    # dotnet test prints localized labels on a French Windows (réussie, échec, ignoré).
+    num() { echo "$tests_log" | grep -E "^ *($1) *: *[0-9]+" | tail -1 | grep -oE '[0-9]+$'; }
+    ci_win_counts="$(num 'succeeded|réussie') passed, $(num 'failed|échec') failed, $(num 'skipped|ignoré') skipped, $(num 'total') total"
+    echo "$tests_log" | grep -q 'SMOKE OK' && ci_win_smoke="SMOKE OK" || ci_win_smoke="no SMOKE OK"
+  fi
+fi
+winfo() { sed -n "s/^$1: //p" "$win_info" 2>/dev/null; }
+
 native_row() {
   local rid="$1"
   if [[ -f "native/out/$rid/build-info.txt" ]]; then
@@ -177,7 +202,11 @@ native_row() {
   echo "|---|---|---|---|---|---|"
   native_row linux-x64
   native_row linux-arm64
-  native_row win-x64
+  if [[ -s "$win_info" ]]; then
+    echo "| win-x64 (CI) | \`$(winfo file)\` | $(winfo size_bytes) | \`$(winfo sha256)\` | $(winfo compiler) | $(winfo built_utc) |"
+  else
+    native_row win-x64
+  fi
   echo
   echo "Exported symbols (linux-x64): $(info linux-x64 exports)"
   echo
@@ -193,7 +222,9 @@ native_row() {
     [[ "${step_names[$i]}" == "native smoke arm64 (qemu)" ]] && arm_status="cross-built, native smoke ${step_status[$i]} under qemu; managed tests not run on ARM64 hardware"
   done
   echo "| linux-arm64 | $arm_status |"
-  if [[ -f native/out/win-x64/build-info.txt ]]; then
+  if [[ -n "$ci_run" ]]; then
+    echo "| win-x64 | CI run [$ci_run]($ci_url) on the self-hosted runner: native build $ci_win_native, managed build and tests $ci_win_tests ($ci_win_counts, $ci_win_smoke), from \`$(winfo repo_commit)\` |"
+  elif [[ -f native/out/win-x64/build-info.txt ]]; then
     echo "| win-x64 | binary present (built $(info win-x64 built_utc) from \`$(info win-x64 repo_commit)\`); verify the CI run for this commit |"
   else
     echo "| win-x64 | **pending**: needs the self-hosted runner (docs/pc-steps.md) |"

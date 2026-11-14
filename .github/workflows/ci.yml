@@ -54,6 +54,9 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: native/build.sh linux-arm64
 
+      - name: Show build info
+        run: cat native/out/*/build-info.txt
+
       - name: Native smoke test (x64 and arm64 under qemu)
         run: |
           gcc -o /tmp/native-smoke native/tests/native_smoke.c -ldl
@@ -85,6 +88,11 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         shell: powershell
         run: native\build.ps1
+
+      # Printed into the log so build records can quote the exact binary (scripts/build-and-record.sh --ci-run).
+      - name: Show build info
+        shell: powershell
+        run: Get-Content native\out\win-x64\build-info.txt
 
       - uses: actions/upload-artifact@v7
         with:
