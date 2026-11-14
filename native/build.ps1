@@ -54,6 +54,29 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) { throw "$File $($Arguments -join ' ') failed with exit code $LASTEXITCODE" }
 }
 
+# CMake: use the one on PATH, else the standard install folders, else the copy that ships with
+# Visual Studio's C++ workload. A Windows service (the CI runner) does not see PATH changes made
+# after it started, so relying on PATH alone fails right after installing CMake.
+function Find-CMake {
+    $onPath = Get-Command cmake -ErrorAction SilentlyContinue
+    if ($onPath) { return $onPath.Source }
+    $candidates = @(
+        (Join-Path $env:ProgramFiles 'CMake\bin\cmake.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'CMake\bin\cmake.exe')
+    )
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path $vswhere) {
+        $vs = & $vswhere -latest -products * -property installationPath
+        if ($vs) { $candidates += Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' }
+    }
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path $c)) { return $c }
+    }
+    throw 'CMake not found. Install it from cmake.org (option: add CMake to the system PATH) or add the "C++ CMake tools for Windows" component in the Visual Studio Installer.'
+}
+$cmake = Find-CMake
+Write-Host "== using CMake: $cmake"
+
 $deps   = Join-Path $here '.deps'
 $work   = Join-Path $here ".build\$Rid"
 $prefix = Join-Path $work 'prefix'
@@ -96,18 +119,18 @@ $common = @(
 )
 
 Write-Host "== building mbedTLS $($v.MBEDTLS_TAG) for $Rid"
-Invoke-Checked cmake (@('-S', (Join-Path $deps 'mbedtls'), '-B', (Join-Path $work 'mbedtls')) + $common + @(
+Invoke-Checked $cmake (@('-S', (Join-Path $deps 'mbedtls'), '-B', (Join-Path $work 'mbedtls')) + $common + @(
     '-DENABLE_TESTING=OFF',
     '-DENABLE_PROGRAMS=OFF',
     '-DUSE_STATIC_MBEDTLS_LIBRARY=ON',
     '-DUSE_SHARED_MBEDTLS_LIBRARY=OFF',
     '-DMBEDTLS_FATAL_WARNINGS=OFF'))
-Invoke-Checked cmake @('--build', (Join-Path $work 'mbedtls'), '--config', 'Release', '--parallel')
-Invoke-Checked cmake @('--install', (Join-Path $work 'mbedtls'), '--config', 'Release')
+Invoke-Checked $cmake @('--build', (Join-Path $work 'mbedtls'), '--config', 'Release', '--parallel')
+Invoke-Checked $cmake @('--install', (Join-Path $work 'mbedtls'), '--config', 'Release')
 
 Write-Host "== building open62541 $($v.OPEN62541_TAG) for $Rid"
 # Options are explained one by one in native/build.sh; keep both lists identical.
-Invoke-Checked cmake (@('-S', (Join-Path $deps 'open62541'), '-B', (Join-Path $work 'open62541')) + $common + @(
+Invoke-Checked $cmake (@('-S', (Join-Path $deps 'open62541'), '-B', (Join-Path $work 'open62541')) + $common + @(
     '-DBUILD_SHARED_LIBS=OFF',
     '-DUA_ENABLE_ENCRYPTION=MBEDTLS',
     "-DMBEDTLS_FOLDER_INCLUDE=$prefixCm/include",
@@ -122,15 +145,15 @@ Invoke-Checked cmake (@('-S', (Join-Path $deps 'open62541'), '-B', (Join-Path $w
     '-DUA_BUILD_EXAMPLES=OFF',
     '-DUA_BUILD_UNIT_TESTS=OFF',
     '-DUA_FORCE_WERROR=OFF'))
-Invoke-Checked cmake @('--build', (Join-Path $work 'open62541'), '--config', 'Release', '--parallel')
-Invoke-Checked cmake @('--install', (Join-Path $work 'open62541'), '--config', 'Release')
+Invoke-Checked $cmake @('--build', (Join-Path $work 'open62541'), '--config', 'Release', '--parallel')
+Invoke-Checked $cmake @('--install', (Join-Path $work 'open62541'), '--config', 'Release')
 
 Write-Host "== building shim for $Rid"
 $outCm = $out -replace '\\', '/'
-Invoke-Checked cmake (@('-S', (Join-Path $here 'shim'), '-B', (Join-Path $work 'shim')) + $common + @(
+Invoke-Checked $cmake (@('-S', (Join-Path $here 'shim'), '-B', (Join-Path $work 'shim')) + $common + @(
     "-DCMAKE_PREFIX_PATH=$prefixCm",
     "-DCICTNA_UA_OUT_DIR=$outCm"))
-Invoke-Checked cmake @('--build', (Join-Path $work 'shim'), '--config', 'Release', '--parallel')
+Invoke-Checked $cmake @('--build', (Join-Path $work 'shim'), '--config', 'Release', '--parallel')
 
 $dll = Join-Path $out 'cictna_ua.dll'
 if (-not (Test-Path $dll)) { throw "build finished but $dll is missing" }
@@ -151,7 +174,7 @@ $repoCommit = (& git -C $repoRoot rev-parse --short HEAD 2>$null)
 $repoDirty = if (& git -C $repoRoot status --porcelain 2>$null) { 'yes' } else { 'no' }
 $ErrorActionPreference = $saved
 if (-not $repoCommit) { $repoCommit = 'unknown' }
-$cmakeVersion = ((& cmake --version | Select-Object -First 1) -split ' ')[2]
+$cmakeVersion = ((& $cmake --version | Select-Object -First 1) -split ' ')[2]
 $item = Get-Item $dll
 $info = @(
     "rid: $Rid",
