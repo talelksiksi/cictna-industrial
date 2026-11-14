@@ -77,6 +77,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # actions/cache on Windows runs Git's tar.exe, which pipes through gzip from the same
+      # Git\usr\bin folder. The runner service's PATH only has Git\cmd, so the save failed with
+      # "gzip: command not found" and win-x64 was rebuilt on every run. The folder is appended,
+      # not prepended, so Git's Unix tools never shadow Windows or MSVC ones (find.exe, link.exe).
+      - name: Make gzip available to actions/cache
+        shell: powershell
+        run: |
+          $gitUsrBin = Join-Path $env:ProgramFiles 'Git\usr\bin'
+          if (-not (Test-Path (Join-Path $gitUsrBin 'gzip.exe'))) {
+            Write-Output "gzip.exe not found in $gitUsrBin; the cache may not save"
+          } elseif ($env:PATH -like "*$gitUsrBin*") {
+            Write-Output "$gitUsrBin is already on PATH"
+          } else {
+            "PATH=$env:PATH;$gitUsrBin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            Write-Output "appended $gitUsrBin to PATH"
+          }
+
       - name: Cache native build output
         id: cache
         uses: actions/cache@v6
@@ -116,7 +133,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The self-hosted Windows runner runs as NetworkService, which cannot write to
+      # C:\Program Files\dotnet; setup-dotnet then warned and fell back to the service profile.
+      # The runner's tool cache is writable and lives with the runner. Elsewhere this is empty,
+      # which setup-dotnet treats as unset (its default directory).
       - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.os == 'Windows' && runner.environment == 'self-hosted' && format('{0}\dotnet', runner.tool_cache) || '' }}
         with:
           global-json-file: global.json
 
