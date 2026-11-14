@@ -45,6 +45,9 @@ Open a new PowerShell and run each line. The expected result is on the right.
 | `cmake --version` | 3.20 or newer. If missing: install from cmake.org, tick "Add CMake to the system PATH" |
 | `gh auth status` | "Logged in to github.com account talelksiksi" |
 
+- [ ] Python 3 for all users (open62541 generates code with it; the CI runner service cannot see
+  a per-user Python). Admin PowerShell:
+  `winget install --id Python.Python.3.12 -e --scope machine`
 - [ ] Visual Studio Installer: Modify your Visual Studio (or Build Tools) and make sure the
   workload **Desktop development with C++** is ticked. The native library is built with MSVC.
 
