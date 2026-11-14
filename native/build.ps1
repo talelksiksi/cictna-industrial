@@ -77,6 +77,27 @@ function Find-CMake {
 $cmake = Find-CMake
 Write-Host "== using CMake: $cmake"
 
+# Python 3: open62541 generates its type and node code with it. Same idea as CMake: PATH first
+# (skipping the Microsoft Store stub in WindowsApps), then the py launcher, then the all-users
+# install folders. The CI runner service only sees all-users installs (docs/pc-steps.md).
+function Find-Python {
+    foreach ($name in @('python', 'python3')) {
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue
+        if ($cmd -and $cmd.Source -notlike '*\WindowsApps\*') { return $cmd.Source }
+    }
+    $py = Get-Command py -ErrorAction SilentlyContinue
+    if ($py) {
+        $exe = & $py.Source -3 -c "import sys; print(sys.executable)" 2>$null
+        if ($LASTEXITCODE -eq 0 -and $exe -and (Test-Path $exe.Trim())) { return $exe.Trim() }
+    }
+    $installed = Get-ChildItem -Path (Join-Path $env:ProgramFiles 'Python3*\python.exe') -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if ($installed) { return $installed.FullName }
+    throw 'Python 3 not found. Install it for all users: winget install --id Python.Python.3.12 -e --scope machine (admin PowerShell).'
+}
+$python = Find-Python
+Write-Host "== using Python: $python"
+
 $deps   = Join-Path $here '.deps'
 $work   = Join-Path $here ".build\$Rid"
 $prefix = Join-Path $work 'prefix'
@@ -144,7 +165,8 @@ Invoke-Checked $cmake (@('-S', (Join-Path $deps 'open62541'), '-B', (Join-Path $
     '-DUA_LOGLEVEL=300',
     '-DUA_BUILD_EXAMPLES=OFF',
     '-DUA_BUILD_UNIT_TESTS=OFF',
-    '-DUA_FORCE_WERROR=OFF'))
+    '-DUA_FORCE_WERROR=OFF',
+    "-DPython3_EXECUTABLE=$($python -replace '\\', '/')"))
 Invoke-Checked $cmake @('--build', (Join-Path $work 'open62541'), '--config', 'Release', '--parallel')
 Invoke-Checked $cmake @('--install', (Join-Path $work 'open62541'), '--config', 'Release')
 
