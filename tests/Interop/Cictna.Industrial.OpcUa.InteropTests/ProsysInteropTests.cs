@@ -61,6 +61,39 @@ public sealed class ProsysInteropTests
     }
 
     [Fact]
+    public async Task SubscriptionReceivesTheSimulationSignals()
+    {
+        // Phase 2 against a third, Java-based stack: the simulation signals change every second,
+        // so every subscribed signal must report its initial value and then changes, with the
+        // subscription kept alive by Prosys's keep-alives.
+        var ct = TestContext.Current.CancellationToken;
+        await using var client = await ConnectAsync();
+        var signals = await SimulationSignalsAsync(client);
+        await using var subscription = await client.CreateSubscriptionAsync(new SubscriptionOptions { PublishingInterval = TimeSpan.FromMilliseconds(250) }, ct);
+        var items = await subscription.AddItemsAsync(signals.Select(s => new MonitoredItemRequest(s.NodeId.NodeId) { Tag = s.BrowseName.Name }).ToArray(), ct);
+        Assert.All(items, i => Assert.True(i.Status.IsGood, i.ToString()));
+
+        var changes = new Dictionary<MonitoredItem, int>();
+        using var window = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        window.CancelAfter(TimeSpan.FromSeconds(8));
+        try
+        {
+            await foreach (var change in subscription.DataChanges.ReadAllAsync(window.Token))
+            {
+                changes[change.Item] = changes.GetValueOrDefault(change.Item) + 1;
+            }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // the observation window ended
+        }
+        Assert.Equal(items.Count, changes.Count);                // every signal reported
+        Assert.Contains(changes.Values, n => n >= 3);            // and the moving ones kept reporting
+        Assert.Equal(ConnectionState.Connected, client.State);
+        Assert.Equal(0, subscription.LostNotificationMessages);
+    }
+
+    [Fact]
     public async Task ReadsServerInfoAndLimits()
     {
         await using var client = await ConnectAsync();

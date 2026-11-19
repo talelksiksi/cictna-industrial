@@ -67,6 +67,14 @@ See the comment block in `native/build.sh` for every option. The important ones:
 
 `OpcUaNativeLibrary.EnsureCompatible()` then checks the ABI version. Call it once at startup.
 
+## ABI history
+
+| ABI | Change |
+|---|---|
+| 1 | Identity functions and the loopback self test (Phase 0) |
+| 2 | Generic service call, client and server objects, codec round trip, certificates, log queues (Phase 1) |
+| 3 | `cictna_ua_client_close_channel`; `max_monitored_item_queue_size` in the server options (Phase 2) |
+
 ## Changing the C boundary
 
 In one commit: edit `cictna_ua.h` and `cictna_ua.c`, mirror the change in `NativeMethods.cs`, bump
@@ -101,8 +109,8 @@ codec follows open62541 where the specification leaves room, and works around th
   no predefined namespaces (our setup) the mapping is the identity for all namespaces the server
   has; an index the server does not have is mapped to 65535 minus the index, so it can never
   silently point at the wrong namespace. The table is not re-read on a later connect of the same
-  native client: Phase 2 reconnection must create a fresh native client (or re-read) so a server
-  restarted with a different namespace order is handled correctly.
+  native client, so the managed client creates a fresh native client for every connection
+  (Phase 2), and a server restarted with a different namespace order is handled correctly.
 
 - Client certificate validation: with an empty trust list open62541 keeps its default, which
   accepts every certificate. The shim therefore installs an empty in-memory trust store unless
@@ -115,6 +123,33 @@ codec follows open62541 where the specification leaves room, and works around th
   plain endpoint: otherwise open62541 reopens the discovery channel on the URL the server
   advertises (node-opcua advertises its machine name), which fails with noReconnect and, on plant
   networks, often because that name does not resolve. Found by the node-opcua interop tests.
+- FindServers URL switch: while connecting, open62541 also asks the server for its discovery URLs
+  and, if the URL we dialled is not among them, reconnects to the advertised one. Behind NAT, a port
+  forward, a Docker port mapping or a proxy that is wrong (the server only knows its internal
+  address). The only switch open62541 offers is `config.applicationUri`, a filter on which servers
+  FindServers considers; the shim sets it to a value no server matches, and open62541 then keeps
+  the given URL. The filter also applies to open62541's own endpoint selection, which we never use
+  (the endpoint is always preset). Found by the node-opcua interop tests through a TCP proxy.
+- Closing a client deletes its subscriptions: `UA_Client_disconnect` and `UA_Client_delete` send
+  CloseSession with deleteSubscriptions=true while the session is active. When the managed client
+  gives up on a connection it still believes alive (missed keep-alives), it first calls
+  `cictna_ua_client_close_channel` (ABI 3), which closes only the secure channel; the server keeps
+  the session and its subscriptions until their timeouts, and the next connection takes them over
+  with TransferSubscriptions.
+- TransferSubscriptions for anonymous sessions: open62541's default access control allows it only
+  when both sessions use a secure channel (not SecurityPolicy None) and come from the same
+  application, as Part 4 5.13.7 asks. Over None, anonymous subscriptions are recreated instead.
+- Monitored item queues: the default server configuration caps every queue at 100 values
+  (`queueSizeLimits`). `OpcUaServerOptions.MaxMonitoredItemQueueSize` (ABI 3) raises the cap.
+
+## Subscriptions in the managed layer
+
+The client does not use open62541's subscription API. It sends CreateSubscription, Publish,
+Republish and the rest through the generic service call like any other request, and runs the
+publish logic (acknowledgements, sequence gaps, keep-alive watchdog, transfer or recreate) in C#
+(`SubscriptionEngine`). That keeps every protocol decision testable in C#, and lets a subscription
+outlive the native client it was created on. A Publish request carries its own timeout hint
+(several keep-alive periods), which is also the local timeout open62541 enforces for it.
 
 ## Known limits
 

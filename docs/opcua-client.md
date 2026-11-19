@@ -75,9 +75,121 @@ client.StateChanged += (_, change) =>
     logger.LogInformation("OPC UA {State} ({Reason})", change.State, change.Reason.Name);
 ```
 
-Phase 1 does not reconnect by itself: after a lost connection the state is `Disconnected` with the
-reason, and `ConnectAsync` can be called again. Automatic reconnection with subscription recovery
-is Phase 2.
+States: `Disconnected`, `Connecting`, `Connected`, `Disconnecting`, and `Reconnecting` after an
+established connection was lost.
+
+### Automatic reconnect
+
+When a connection is lost (the server closes it, the network breaks, or subscriptions stop
+receiving keep-alives), the client reconnects by itself. Each attempt uses a fresh native client,
+so nothing from the old connection (such as the server's namespace table) leaks into the new one.
+Attempts are spaced with exponential backoff and random jitter:
+
+```csharp
+var options = new OpcUaClientOptions
+{
+    Reconnect = new ReconnectOptions
+    {
+        InitialDelay = TimeSpan.FromSeconds(1),  // first attempt
+        MaxDelay = TimeSpan.FromSeconds(30),     // the wait never grows beyond this
+        Multiplier = 2,                          // 1 s, 2 s, 4 s, 8 s ... 30 s
+        Jitter = 0.2,                            // plus or minus 20 %, so many clients do not retry in step
+    },
+};
+```
+
+While `Reconnecting`, calls fail fast with `BadNotConnected`; retry them or wait for `Connected`.
+`DisconnectAsync` stops reconnecting. Set `Reconnect = new ReconnectOptions { Enabled = false }` to
+handle reconnection yourself. A first `ConnectAsync` that fails is not retried: that is usually a
+configuration problem, not an outage.
+
+## Subscriptions
+
+The server watches values and sends changes; nothing is polled.
+
+```csharp
+await using var subscription = await client.CreateSubscriptionAsync(new SubscriptionOptions
+{
+    PublishingInterval = TimeSpan.FromMilliseconds(500), // how often changes are sent
+    KeepAliveCount = 10,                                 // an empty message after 10 quiet intervals
+    LifetimeCount = 120,                                 // the server keeps it 60 s without a client
+});
+
+var items = await subscription.AddItemsAsync(
+[
+    new MonitoredItemRequest(NodeId.Parse("ns=2;s=Pump01.Speed")) { Tag = "pump01.speed" },
+    new MonitoredItemRequest(NodeId.Parse("ns=2;s=Tank02.Level"))
+    {
+        SamplingInterval = TimeSpan.FromMilliseconds(100),
+        QueueSize = 100,                       // keep up to 100 changes between publishes
+        DeadbandType = DeadbandType.Absolute,  // ignore changes smaller than 0.5 (server side)
+        DeadbandValue = 0.5,
+    },
+]);
+// Items the server refuses (unknown node...) come back with a Bad Status; the call does not throw.
+
+await foreach (var change in subscription.DataChanges.ReadAllAsync(stoppingToken))
+{
+    // In the order the server sent them. change.Item.Tag is what you put in the request.
+    Console.WriteLine($"{change.Item.Tag} = {change.Value.Value} ({change.Value.Status})");
+}
+```
+
+Every item first reports its current value. Changes go through a bounded buffer
+(`SubscriptionOptions.BufferCapacity`, 10 000 by default): if your code reads slower than changes
+arrive, the client stops asking the server for more until it catches up, so values wait on the
+server instead of being dropped in the client.
+
+### What happens during an outage
+
+The subscription object survives reconnects. After a new session the client:
+
+1. asks the server to move the subscription to the new session (TransferSubscriptions);
+2. fetches the notification messages it missed (Republish), in order;
+3. carries on. Nothing is lost that the server still had.
+
+If the server cannot transfer it (it restarted, the subscription expired, or the server refuses),
+the client creates the subscription again with the same items. Changes during the outage are then
+gone, and each item reports its current value again. `subscription.EventOccurred` says which
+happened (`Transferred`, `Recreated`, `NotificationsLost`, `KeepAliveMissed`...).
+
+Two things decide how much an outage can cost:
+
+- **Security.** For an anonymous user, OPC UA allows a transfer only over a secure channel
+  (Sign or SignAndEncrypt): over SecurityPolicy None anyone could claim the subscription.
+  open62541 enforces this, so with None and anonymous every outage means a recreate. Use
+  SignAndEncrypt, or a user name, for loss-free reconnects.
+- **The server's queue.** While no client is connected, each item keeps at most its queue size of
+  changes (`QueueSize`, capped by the server: open62541 allows 100 by default,
+  `OpcUaServerOptions.MaxMonitoredItemQueueSize` raises it for our server). Older changes are
+  discarded and the next value carries the Overflow bit. And the subscription itself lives
+  `LifetimeCount` publishing intervals without a client.
+
+## Triggers
+
+`Cictna.Industrial.Triggers` decides when a stream of values is worth acting on. It works on
+`DataValue`s from any source (OPC UA now, Modbus later):
+
+```csharp
+var overheat = new ThresholdTrigger(ThresholdComparison.Above, 80)
+{
+    Name = "Pump 01 overheating", Hysteresis = 2, NotifyOnReturn = true,
+}.CreateEvaluator();                                   // one evaluator per tag
+
+await foreach (var change in subscription.DataChanges.ReadAllAsync(stoppingToken))
+{
+    if (overheat.OnValue(change.Value) is { } e)
+        logger.LogWarning("{Trigger}: {Reason} at {Time}", e.Name, e.Reason, e.Time);
+}
+```
+
+The nine kinds: `AnyChangeTrigger`, `ThresholdTrigger` (edge or level, hysteresis),
+`DeadbandTrigger` (absolute or percent), `RateOfChangeTrigger`, `DirectionTrigger`,
+`ValueChangeTrigger` (optionally one transition, such as state 3 to 5), `BitTrigger` (one bit of a
+status word), `TimeBasedTrigger` (every interval, optionally on round clock times; drive it with
+`OnTick`) and `ConnectionTrigger` (drive it with `OnConnectionChanged` from `client.StateChanged`).
+Values with a Bad status are ignored by default, so a communication error does not look like a
+real change.
 
 ## Security
 
@@ -123,7 +235,9 @@ var options = new OpcUaClientOptions
 
 Native lines appear as `[client/securechannel] ...` with the open62541 category. Metrics are
 published on the meter `Cictna.Industrial.OpcUa`: request count and duration per service and
-status, connection state changes, dropped native log lines. Watch them live with
+status, connection state changes, reconnect attempts, publish responses, notifications delivered,
+messages republished or lost, keep-alive misses, subscriptions transferred or recreated, and
+dropped native log lines. Watch them live with
 `dotnet-counters monitor --counters Cictna.Industrial.OpcUa`.
 
 ## A server for tests and demos

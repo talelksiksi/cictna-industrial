@@ -10,7 +10,21 @@ Legend: `[ ]` to do, `[x]` done.
 
 ## Open
 
-Nothing open. The next PC item comes with Phase 2 (the Windows CI runner just has to be on).
+Nothing required. Phase 2 needed only the Windows CI runner, which ran on its own.
+
+### 6. (Optional) Prosys subscription check
+Phase 2 added a sixth Prosys test that subscribes to the simulation signals. Not required to close
+the phase (its exit criteria are met without it), but it checks subscriptions against a third,
+Java-based stack. Whenever Prosys is running anyway:
+- [ ] In PowerShell, in the repo folder (both lines in the same window):
+  ```powershell
+  git pull
+  powershell -ExecutionPolicy Bypass -File native\build.ps1
+  $env:CICTNA_PROSYS_URL = "opc.tcp://TALEL-PC-NEW:53530/OPCUA/SimulationServer"
+  dotnet test --project tests\Interop\Cictna.Industrial.OpcUa.InteropTests -c Release
+  ```
+  Expected: 6 Prosys tests passed (the certificate is already trusted), node-opcua tests skipped
+  (no Node.js on the PC). Paste the summary to Claude.
 
 ---
 
@@ -28,6 +42,8 @@ Nothing open. The next PC item comes with Phase 2 (the Windows CI runner just ha
 
 ## Done
 
+- [x] 2026-11-19: Phase 2 verified on the self-hosted runner (CI run 44548900001): 176 tests on Windows,
+  171 passed, 5 Prosys skipped, 0 failed, including the chaos tests. Nothing to do by hand.
 - [x] 2026-11-19: Prosys interop passed (closes Phase 1). Prosys OPC UA Simulation Server on the
   PC at `opc.tcp://TALEL-PC-NEW:53530/OPCUA/SimulationServer`: 5 passed, 0 failed (connect, browse
   and read of the simulation signals, signals change over time, server info and limits,
