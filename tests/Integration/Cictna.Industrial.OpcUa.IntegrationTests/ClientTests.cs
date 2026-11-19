@@ -277,7 +277,8 @@ public sealed class ClientTests(TestServer server) : IClassFixture<TestServer>
     {
         await using var own = new TestServer();
         await own.InitializeAsync();
-        await using var client = await OpcUaClient.CreateAsync();
+        // Without automatic reconnection the client stays Disconnected (see ChaosTests for reconnecting).
+        await using var client = await OpcUaClient.CreateAsync(new OpcUaClientOptions { Reconnect = new ReconnectOptions { Enabled = false } });
         var lost = new TaskCompletionSource<ConnectionStateChange>();
         client.StateChanged += (_, e) =>
         {

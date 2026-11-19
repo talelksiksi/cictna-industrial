@@ -74,6 +74,7 @@ internal unsafe struct ServerOptionsNative
     public uint MaxNodesPerBrowse;
     public uint MaxReferencesPerNode;
     public int LogLevel;
+    public uint MaxMonitoredItemQueueSize;
 }
 
 /// <summary>

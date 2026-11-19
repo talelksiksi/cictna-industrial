@@ -78,6 +78,9 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_disconnect")]
     internal static partial uint ClientDisconnect(ClientHandle client);
 
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_close_channel")]
+    internal static partial uint ClientCloseChannel(ClientHandle client);
+
     [LibraryImport(LibraryName, EntryPoint = "cictna_ua_client_iterate")]
     internal static partial uint ClientIterate(ClientHandle client, uint timeoutMs);
 

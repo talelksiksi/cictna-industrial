@@ -44,6 +44,13 @@ public sealed record OpcUaServerOptions
     /// <summary>Most references returned per node before a continuation point; 0 keeps the default.</summary>
     public int MaxReferencesPerNode { get; init; }
 
+    /// <summary>
+    /// Most values one monitored item may queue between two Publish requests; 0 keeps open62541's
+    /// default of 100. Clients that must ride out longer outages without losing values need more:
+    /// at 10 changes per second, 100 covers only 10 seconds.
+    /// </summary>
+    public int MaxMonitoredItemQueueSize { get; init; }
+
     /// <summary>Where log lines go. Null disables logging.</summary>
     public ILoggerFactory? LoggerFactory { get; init; }
 
@@ -253,6 +260,7 @@ public sealed class OpcUaServer : IAsyncDisposable
                     MaxNodesPerWrite = (uint)Math.Max(0, _options.MaxNodesPerWrite),
                     MaxNodesPerBrowse = (uint)Math.Max(0, _options.MaxNodesPerBrowse),
                     MaxReferencesPerNode = (uint)Math.Max(0, _options.MaxReferencesPerNode),
+                    MaxMonitoredItemQueueSize = (uint)Math.Max(0, _options.MaxMonitoredItemQueueSize),
                     LogLevel = NativeLog.ToNativeLevel(_options.NativeLogLevel),
                 };
                 var status = NativeMethods.ServerNew(&native, out var handle);

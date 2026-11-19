@@ -33,7 +33,7 @@ namespace Cictna.Industrial.OpcUa.Native;
 public static class OpcUaNativeLibrary
 {
     /// <summary>The shim ABI version this assembly was written against.</summary>
-    public const int ExpectedAbiVersion = 2;
+    public const int ExpectedAbiVersion = 3;
 
     /// <summary>ABI version reported by the loaded native library.</summary>
     public static int AbiVersion => NativeMethods.AbiVersion();

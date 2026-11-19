@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The network-breaking relay from the integration tests, shared as source. -->
+    <Compile Include="..\..\Integration\Cictna.Industrial.OpcUa.IntegrationTests\TcpProxy.cs" Link="TcpProxy.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\..\src\Cictna.Industrial.OpcUa\Cictna.Industrial.OpcUa.csproj" />
   </ItemGroup>
 

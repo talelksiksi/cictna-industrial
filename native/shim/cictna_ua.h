@@ -29,7 +29,7 @@
 #endif
 
 /* 1: Phase 0 (identity, self test). 2: Phase 1 (client, test server, codec, certificates, logs). */
-#define CICTNA_UA_ABI_VERSION 2
+#define CICTNA_UA_ABI_VERSION 3
 
 /* Feature flags returned by cictna_ua_features(). */
 #define CICTNA_UA_FEATURE_ENCRYPTION      0x0001u
@@ -150,8 +150,15 @@ CICTNA_UA_API uint32_t cictna_ua_client_connect(cictna_ua_client *client, const 
                                                 const uint8_t *endpoint, size_t endpoint_len,
                                                 int32_t user_token_type);
 
-/* Starts a clean disconnect (close session, close channel). */
+/* Starts a clean disconnect (close session, close channel). Closing the session also deletes its
+ * subscriptions on the server. */
 CICTNA_UA_API uint32_t cictna_ua_client_disconnect(cictna_ua_client *client);
+
+/* Closes only the secure channel and leaves the session alone (ABI 3). Used before deleting a
+ * client whose connection is in doubt: the session and its subscriptions stay on the server until
+ * their timeouts, so a new client can take the subscriptions over with TransferSubscriptions. A
+ * normal disconnect (or deleting a connected client) would send CloseSession and delete them. */
+CICTNA_UA_API uint32_t cictna_ua_client_close_channel(cictna_ua_client *client);
 
 /* Runs the client's event loop for at most timeout_ms. All network I/O, timeouts and response
  * handling happen inside this call. Call it continuously from the worker thread. */
@@ -219,6 +226,8 @@ typedef struct {
     uint32_t max_nodes_per_browse;
     uint32_t max_references_per_node;
     int32_t log_level;
+    uint32_t max_monitored_item_queue_size; /* ABI 3. Upper limit for a monitored item's queue;
+                                             * 0: open62541 default (100) */
 } cictna_ua_server_options;
 
 CICTNA_UA_API uint32_t cictna_ua_server_new(const cictna_ua_server_options *options,
