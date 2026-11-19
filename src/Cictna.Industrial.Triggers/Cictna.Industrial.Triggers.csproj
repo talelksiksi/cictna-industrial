@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Protocol-independent triggers for the Cictna industrial stack: decide from a stream of values (OPC UA, Modbus, simulator) when something worth acting on happened. Nine kinds: any change, threshold, deadband, rate of change, direction, value change, bit, time based and connection.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cictna.Industrial.Core\Cictna.Industrial.Core.csproj" />
+  </ItemGroup>
+
+</Project>

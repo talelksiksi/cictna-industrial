@@ -196,7 +196,10 @@ $repoCommit = (& git -C $repoRoot rev-parse --short HEAD 2>$null)
 $repoDirty = if (& git -C $repoRoot status --porcelain 2>$null) { 'yes' } else { 'no' }
 $ErrorActionPreference = $saved
 if (-not $repoCommit) { $repoCommit = 'unknown' }
-$cmakeVersion = ((& $cmake --version | Select-Object -First 1) -split ' ')[2]
+# Read all lines, then take the first: piping into Select-Object -First 1 stops the pipeline
+# early, which can kill cmake mid-write and leave a non-zero $LASTEXITCODE that fails the CI step
+# after a successful build (seen once in 20 runs).
+$cmakeVersion = (@(& $cmake --version)[0] -split ' ')[2]
 $item = Get-Item $dll
 $info = @(
     "rid: $Rid",
@@ -216,3 +219,6 @@ $info = @(
 [System.IO.File]::WriteAllLines((Join-Path $out 'build-info.txt'), $info, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "== done: $dll"
+
+# Every native call above was checked; do not let a stray $LASTEXITCODE decide the step's result.
+exit 0
