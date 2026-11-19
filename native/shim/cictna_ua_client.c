@@ -14,9 +14,9 @@
  * managed code, which avoids reverse P/Invoke, delegate lifetime problems and exceptions
  * crossing native frames.
  *
- * Reconnection: open62541 can reconnect on its own. Phase 1 switches that off (noReconnect) so
- * a lost connection is reported plainly; Phase 2 implements reconnection with backoff and
- * subscription recovery explicitly in the managed layer.
+ * Reconnection: open62541 can reconnect on its own. We switch that off (noReconnect) so a lost
+ * connection is reported plainly; the managed layer reconnects with backoff, using a fresh native
+ * client for every connection, and moves subscriptions over with TransferSubscriptions.
  */
 #include "cictna_ua_internal.h"
 
@@ -51,6 +51,21 @@ typedef struct {
     cictna_ua_client *owner;
     const UA_DataType *response_type;
 } pending_request;
+
+/* Keeps open62541 on the URL the caller gave.
+ *
+ * While connecting, open62541 asks the server for its discovery URLs (FindServers). If the URL
+ * we dialled is not among them, it drops the channel and reconnects to the URL the server
+ * advertises. On real networks that is often wrong: behind NAT, a port forward, a Docker port
+ * mapping or a proxy, the server only knows its own internal name and port (node-opcua, for
+ * one, advertises its machine name). The connection then fails, or silently bypasses the path
+ * the user chose.
+ *
+ * open62541 offers one way to steer this: config.applicationUri filters the servers FindServers
+ * considers (and the endpoints of its own endpoint selection, which we never use: the endpoint is
+ * always preset). When no server matches the filter, open62541 keeps the original URL. So we set
+ * a filter that no server can match. Found by the node-opcua interop tests through a TCP proxy. */
+static const char *const KEEP_GIVEN_URL_FILTER = "urn:cictna:keep-the-given-endpoint-url";
 
 static void push_completion(cictna_ua_client *c, uint32_t request_id, uint32_t status, UA_ByteString data) {
     if(c->count == c->capacity) {
@@ -140,6 +155,7 @@ uint32_t cictna_ua_client_new(const cictna_ua_client_options *o, cictna_ua_clien
         goto fail;
 
     cc.timeout = o->request_timeout_ms ? o->request_timeout_ms : 10000;
+    cc.applicationUri = UA_STRING_ALLOC(KEEP_GIVEN_URL_FILTER);
     if(o->secure_channel_lifetime_ms)
         cc.secureChannelLifeTime = o->secure_channel_lifetime_ms;
     if(o->session_timeout_ms)
@@ -238,6 +254,14 @@ uint32_t cictna_ua_client_disconnect(cictna_ua_client *c) {
     return UA_Client_disconnectAsync(c->client);
 }
 
+uint32_t cictna_ua_client_close_channel(cictna_ua_client *c) {
+    /* Synchronous: when this returns the channel is closed, so a following UA_Client_delete finds
+     * no channel to send CloseSession on and the server keeps the session (checked in
+     * open62541's ua_client_connect.c: UA_Client_disconnect only sends CloseSession over an open
+     * channel). */
+    return UA_Client_disconnectSecureChannel(c->client);
+}
+
 uint32_t cictna_ua_client_iterate(cictna_ua_client *c, uint32_t timeout_ms) {
     return UA_Client_run_iterate(c->client, timeout_ms);
 }
@@ -331,6 +355,7 @@ uint32_t cictna_ua_client_get_endpoints(cictna_ua_client *c, const char *url, ui
     }
     tc.timeout = UA_Client_getConfig(c->client)->timeout;
     tc.noReconnect = true;
+    tc.applicationUri = UA_STRING_ALLOC(KEEP_GIVEN_URL_FILTER);
     /* Preset a plain endpoint so open62541 skips its own endpoint selection. That selection may
      * otherwise close the channel to reopen it on the URL the server advertises (node-opcua, for
      * one, advertises its machine name), which fails with noReconnect and, on plant networks,

@@ -1,4 +1,5 @@
 using Cictna.Industrial.Core;
+using Cictna.Industrial.OpcUa.IntegrationTests;
 
 namespace Cictna.Industrial.OpcUa.InteropTests;
 
@@ -39,12 +40,25 @@ public sealed class NodeOpcUaInteropTests(NodeOpcUaServer server) : IClassFixtur
 
     private NodeId Node(string id) => new(id, server.Ns);
 
-    private async Task<OpcUaClient> ConnectAsync(OpcUaClientOptions? options = null)
+    private async Task<OpcUaClient> ConnectAsync(OpcUaClientOptions? options = null, string? url = null)
     {
         server.EnsureAvailable();
         var client = await OpcUaClient.CreateAsync(options);
-        await client.ConnectAsync(server.Url, TestContext.Current.CancellationToken);
+        await client.ConnectAsync(url ?? server.Url, TestContext.Current.CancellationToken);
         return client;
+    }
+
+    [Fact]
+    public async Task ConnectsThroughAPortForward()
+    {
+        // Like NAT or a Docker port mapping: the client dials a port the server does not know.
+        // node-opcua advertises its own machine name and port in FindServers; open62541 would
+        // switch to that address and fail. The client must stay on the URL it was given.
+        server.EnsureAvailable();
+        await using var forward = new TcpProxy(new Uri(server.Url).Port, "localhost");
+        await using var client = await ConnectAsync(url: forward.Url);
+        Assert.Equal(-123456, (await client.ReadAsync(Node("Int32"), TestContext.Current.CancellationToken)).Value.GetValue<int>());
+        Assert.True(forward.AcceptedConnections >= 1);
     }
 
     [Fact]
@@ -52,7 +66,7 @@ public sealed class NodeOpcUaInteropTests(NodeOpcUaServer server) : IClassFixtur
     {
         await using var client = await ConnectAsync();
         Assert.Equal(server.NamespaceUri, client.NamespaceUris[server.Ns]);
-        Assert.Equal(new OperationLimits(50, 50, 10), client.Limits);
+        Assert.Equal(new OperationLimits(50, 50, 10) { MaxMonitoredItemsPerCall = 20 }, client.Limits);
     }
 
     [Fact]

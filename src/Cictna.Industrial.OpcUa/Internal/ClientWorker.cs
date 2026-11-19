@@ -188,6 +188,18 @@ internal sealed partial class ClientWorker : NativeWorker
         }
     }
 
+    /// <summary>
+    /// Closes only the secure channel, leaving the session (and its subscriptions) on the server so
+    /// a new client can transfer them. Used when the connection is in doubt (missed keep-alives),
+    /// before this worker is thrown away; a normal disconnect would delete the subscriptions.
+    /// </summary>
+    public Task AbandonSessionAsync() => InvokeAsync(() =>
+    {
+        _disconnectRequested = true;
+        NativeMethods.ClientCloseChannel(_handle!);
+        return true;
+    });
+
     private void UpdateState()
     {
         NativeMethods.ClientState(_handle!, out var channel, out var session, out var connectStatus);
@@ -234,7 +246,6 @@ internal sealed partial class ClientWorker : NativeWorker
             return;
         }
         _state = state;
-        OpcUaTelemetry.StateChanges.Add(1, new KeyValuePair<string, object?>("state", state.ToString()));
         LogStateChange(Logger, state, reason.Name);
         _onStateChange(new ConnectionStateChange(state, reason));
     }
@@ -245,7 +256,18 @@ internal sealed partial class ClientWorker : NativeWorker
     /// Sends one service request and returns the encoded response. Fails with OpcUaException for
     /// transport problems; the response's own service result is checked by the caller.
     /// </summary>
-    public async Task<byte[]> SendAsync(string service, uint requestEncodingId, uint responseEncodingId, byte[] request, CancellationToken cancellationToken)
+    /// <param name="service">Service name, for errors, logs and metrics.</param>
+    /// <param name="requestEncodingId">DefaultBinary encoding id of the request.</param>
+    /// <param name="responseEncodingId">DefaultBinary encoding id of the response.</param>
+    /// <param name="request">The encoded request.</param>
+    /// <param name="cancellationToken">Abandons the request (and asks the server to cancel it).</param>
+    /// <param name="timeout">
+    /// How long this request may take; null for the client's request timeout. Must match the
+    /// request header's timeout hint, which is what open62541 enforces (Publish waits much longer
+    /// than a Read).
+    /// </param>
+    public async Task<byte[]> SendAsync(string service, uint requestEncodingId, uint responseEncodingId, byte[] request,
+        CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var call = new PendingRequest(service);
@@ -254,7 +276,7 @@ internal sealed partial class ClientWorker : NativeWorker
         // Native open62541 enforces the request timeout and answers with BadTimeout. This managed
         // deadline is a safety net a little later, for a native side that never answers.
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(_options.RequestTimeout + TimeSpan.FromSeconds(2));
+        deadline.CancelAfter((timeout ?? _options.RequestTimeout) + TimeSpan.FromSeconds(2));
         await using var registration = deadline.Token.Register(() => Post(() => Abandon(call, cancellationToken))).ConfigureAwait(false);
         return await call.Completion.Task.ConfigureAwait(false);
     }
@@ -356,7 +378,7 @@ internal sealed partial class ClientWorker : NativeWorker
 
     private static uint ToMs(TimeSpan value) => (uint)Math.Clamp(value.TotalMilliseconds, 0, uint.MaxValue);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "OPC UA client {State} ({Reason})")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Native client {State} ({Reason})")]
     private static partial void LogStateChange(ILogger logger, ConnectionState state, string reason);
 
     /// <summary>One request waiting for its response.</summary>

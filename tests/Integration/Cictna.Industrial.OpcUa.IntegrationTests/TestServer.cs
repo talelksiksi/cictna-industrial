@@ -31,6 +31,12 @@ public sealed class TestServer : IAsyncLifetime
 
     public string Url => Server.LocalEndpointUrl;
 
+    /// <summary>Port to listen on; a free one when null. Fixed for restart tests (same address after a "reboot").</summary>
+    public int? Port { get; init; }
+
+    /// <summary>The port in use (after initialization).</summary>
+    public int ActualPort { get; private set; }
+
     /// <summary>Server options; override in a subclass fixture for security tests.</summary>
     public Func<int, OpcUaServerOptions> Options { get; init; } = port => new OpcUaServerOptions
     {
@@ -42,7 +48,8 @@ public sealed class TestServer : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        Server = await OpcUaServer.StartAsync(Options(FreePort()) with { LoggerFactory = Logs }).ConfigureAwait(false);
+        ActualPort = Port ?? FreePort();
+        Server = await OpcUaServer.StartAsync(Options(ActualPort) with { LoggerFactory = Logs }).ConfigureAwait(false);
         Ns = await Server.AddNamespaceAsync(NamespaceUri);
         TypesFolder = await Server.AddFolderAsync(WellKnownNodes.ObjectsFolder, new NodeId("Types", Ns), "Types");
         foreach (var (name, value) in SampleValues())

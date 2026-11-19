@@ -59,6 +59,12 @@ public enum ConnectionState
     Connected,
     /// <summary>Closing the session and channel.</summary>
     Disconnecting,
+    /// <summary>
+    /// The connection was lost and the client is trying to get it back (see
+    /// <see cref="OpcUaClientOptions.Reconnect"/>). Calls fail with BadNotConnected meanwhile;
+    /// subscriptions resume by themselves once connected again.
+    /// </summary>
+    Reconnecting,
 }
 
 /// <summary>Data of <see cref="OpcUaClient.StateChanged"/>.</summary>
@@ -197,6 +203,41 @@ public sealed record OpcUaClientOptions
 
     /// <summary>Lowest native (open62541) log level forwarded to the logger. Default Warning.</summary>
     public LogLevel NativeLogLevel { get; init; } = LogLevel.Warning;
+
+    /// <summary>What to do when an established connection is lost. Reconnects by default.</summary>
+    public ReconnectOptions Reconnect { get; init; } = new();
+}
+
+/// <summary>
+/// Automatic reconnection after a lost connection (not after <see cref="OpcUaClient.DisconnectAsync"/>).
+/// Attempts are spaced with exponential backoff and random jitter, so many clients that lost the same
+/// server do not all hit it at the same moment when it comes back.
+/// </summary>
+public sealed record ReconnectOptions
+{
+    /// <summary>Reconnect automatically. When false the client stays Disconnected after a loss.</summary>
+    public bool Enabled { get; init; } = true;
+
+    /// <summary>Wait before the first attempt. Default 1 s.</summary>
+    public TimeSpan InitialDelay { get; init; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>Longest wait between attempts. Default 30 s.</summary>
+    public TimeSpan MaxDelay { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Factor by which the wait grows after each failed attempt. Default 2.</summary>
+    public double Multiplier { get; init; } = 2;
+
+    /// <summary>Random spread of each wait, as a fraction (0.2 means plus or minus 20 %). Default 0.2.</summary>
+    public double Jitter { get; init; } = 0.2;
+
+    /// <summary>The wait before attempt <paramref name="attempt"/> (1-based), with jitter from <paramref name="random"/>.</summary>
+    internal TimeSpan DelayFor(int attempt, Random random)
+    {
+        var baseMs = InitialDelay.TotalMilliseconds * Math.Pow(Math.Max(1, Multiplier), Math.Max(0, attempt - 1));
+        baseMs = Math.Min(baseMs, MaxDelay.TotalMilliseconds);
+        var spread = Math.Clamp(Jitter, 0, 1) * (random.NextDouble() * 2 - 1);
+        return TimeSpan.FromMilliseconds(Math.Max(0, baseMs * (1 + spread)));
+    }
 }
 
 /// <summary>Effective per-request limits, from the server's OperationLimits and the options.</summary>
@@ -205,6 +246,9 @@ public sealed record OpcUaClientOptions
 /// <param name="MaxNodesPerBrowse">Nodes per Browse request.</param>
 public sealed record OperationLimits(int MaxNodesPerRead, int MaxNodesPerWrite, int MaxNodesPerBrowse)
 {
+    /// <summary>Monitored items per CreateMonitoredItems or DeleteMonitoredItems request.</summary>
+    public int MaxMonitoredItemsPerCall { get; init; } = 1000;
+
     internal static OperationLimits Default { get; } = new(1000, 1000, 100);
 }
 
@@ -230,6 +274,34 @@ public static class OpcUaTelemetry
     /// <summary>Connection state changes, tagged with the new state.</summary>
     internal static readonly Counter<long> StateChanges = Meter.CreateCounter<long>(
         "cictna.opcua.client.state_changes", description: "Client connection state changes, by new state.");
+
+    /// <summary>Publish responses received.</summary>
+    internal static readonly Counter<long> PublishResponses = Meter.CreateCounter<long>(
+        "cictna.opcua.client.publish_responses", description: "Publish responses received (data and keep-alive).");
+
+    /// <summary>Value changes delivered to subscriptions.</summary>
+    internal static readonly Counter<long> Notifications = Meter.CreateCounter<long>(
+        "cictna.opcua.client.notifications", description: "Monitored item value changes delivered.");
+
+    /// <summary>Notification messages fetched again with Republish.</summary>
+    internal static readonly Counter<long> Republished = Meter.CreateCounter<long>(
+        "cictna.opcua.client.republished", description: "Notification messages recovered with Republish.");
+
+    /// <summary>Notification messages that could not be recovered.</summary>
+    internal static readonly Counter<long> LostNotificationMessages = Meter.CreateCounter<long>(
+        "cictna.opcua.client.lost_notification_messages", description: "Notification messages lost (no longer available on the server).");
+
+    /// <summary>Subscriptions that missed their keep-alive.</summary>
+    internal static readonly Counter<long> KeepAliveMisses = Meter.CreateCounter<long>(
+        "cictna.opcua.client.keepalive_misses", description: "Subscriptions without keep-alive in time.");
+
+    /// <summary>Subscriptions moved to a new session, tagged transferred or recreated.</summary>
+    internal static readonly Counter<long> SubscriptionRecoveries = Meter.CreateCounter<long>(
+        "cictna.opcua.client.subscription_recoveries", description: "Subscriptions transferred or recreated after a new session.");
+
+    /// <summary>Reconnect attempts, tagged with the result.</summary>
+    internal static readonly Counter<long> ReconnectAttempts = Meter.CreateCounter<long>(
+        "cictna.opcua.client.reconnect_attempts", description: "Automatic reconnect attempts, by result.");
 
     /// <summary>Native log lines dropped because the native queue was full.</summary>
     internal static readonly Counter<long> DroppedLogLines = Meter.CreateCounter<long>(

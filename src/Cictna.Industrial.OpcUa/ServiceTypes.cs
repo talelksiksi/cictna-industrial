@@ -236,6 +236,9 @@ public static class WellKnownNodes
     public static NodeId MaxNodesPerWrite => new(11707);
     /// <summary>OperationLimits_MaxNodesPerBrowse.</summary>
     public static NodeId MaxNodesPerBrowse => new(11710);
+
+    /// <summary>OperationLimits_MaxMonitoredItemsPerCall.</summary>
+    public static NodeId MaxMonitoredItemsPerCall => new(11714);
 }
 
 /// <summary>One node attribute to read.</summary>

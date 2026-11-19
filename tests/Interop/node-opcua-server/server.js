@@ -69,7 +69,7 @@ async function main() {
         allowAnonymous: true,
         serverCapabilities: {
             maxBrowseContinuationPoints: 10,
-            operationLimits: { maxNodesPerRead: 50, maxNodesPerWrite: 50, maxNodesPerBrowse: 10 },
+            operationLimits: { maxNodesPerRead: 50, maxNodesPerWrite: 50, maxNodesPerBrowse: 10, maxMonitoredItemsPerCall: 20 },
         },
     });
     await server.initialize();

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Cictna.Industrial.Core;
 using Cictna.Industrial.OpcUa.Encoding;
@@ -8,7 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Cictna.Industrial.OpcUa;
 
 /// <summary>
-/// OPC UA client: connect, read, write, browse and discover, on top of open62541.
+/// OPC UA client: connect, read, write, browse, discover and subscribe, on top of open62541.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,9 +30,12 @@ namespace Cictna.Industrial.OpcUa;
 /// the order of the input. Browse follows continuation points until all references are in.
 /// </para>
 /// <para>
-/// Phase 1 scope: no automatic reconnection yet (Phase 2). After a lost connection
-/// <see cref="State"/> becomes Disconnected and <see cref="StateChanged"/> reports the reason;
-/// call <see cref="ConnectAsync"/> again.
+/// Connections: every connection gets a fresh native client (open62541 keeps per-connection state,
+/// such as the namespace table, that must not leak into the next one). When an established
+/// connection is lost, the client reconnects by itself with exponential backoff
+/// (<see cref="OpcUaClientOptions.Reconnect"/>); <see cref="State"/> is Reconnecting meanwhile and
+/// calls fail with BadNotConnected. Subscriptions survive: they are transferred to the new session,
+/// or recreated when the server cannot transfer them.
 /// </para>
 /// </remarks>
 /// <example>
@@ -43,23 +47,32 @@ namespace Cictna.Industrial.OpcUa;
 /// await client.WriteAsync(NodeId.Parse("ns=2;s=Pump01.Setpoint"), 1450.0);
 /// </code>
 /// </example>
-public sealed partial class OpcUaClient : IAsyncDisposable
+public sealed partial class OpcUaClient : IAsyncDisposable, ISubscriptionHost
 {
-    private readonly ClientWorker _worker;
     private readonly OpcUaClientOptions _options;
     private readonly ILogger _logger;
-    private readonly Channel<ConnectionStateChange> _events = Channel.CreateUnbounded<ConnectionStateChange>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly Channel<Action> _events = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Task _eventPump;
+    private readonly SubscriptionEngine _engine;
+    private readonly ConcurrentDictionary<OpcUaSubscription, byte> _subscriptions = new();
+    private readonly Lock _gate = new();
+    private readonly Random _random = new();
+    private ClientWorker _worker = null!; // the native client of the current or last connection; replaced per connection
+    private ConnectionState _state = ConnectionState.Disconnected;
+    private bool _disconnectRequested;
+    private CancellationTokenSource? _reconnect;
+    private long _generation;
+    private int _nextClientHandle;
     private OperationLimits _limits = OperationLimits.Default;
     private string[] _namespaceUris = [];
     private int _disposed;
 
-    private OpcUaClient(ClientWorker worker, OpcUaClientOptions options, ILogger logger)
+    private OpcUaClient(OpcUaClientOptions options, ILogger logger)
     {
-        _worker = worker;
         _options = options;
         _logger = logger;
         _eventPump = Task.Run(PumpEventsAsync);
+        _engine = new SubscriptionEngine(this);
     }
 
     /// <summary>Creates a client (not connected yet).</summary>
@@ -70,10 +83,26 @@ public sealed partial class OpcUaClient : IAsyncDisposable
         options ??= new OpcUaClientOptions();
         Native.OpcUaNativeLibrary.EnsureCompatible();
         var logger = (ILogger?)options.LoggerFactory?.CreateLogger<OpcUaClient>() ?? NullLogger.Instance;
-        OpcUaClient? client = null;
-        var worker = await ClientWorker.CreateAsync(options, logger, change => client?._events.Writer.TryWrite(change)).ConfigureAwait(false);
-        client = new OpcUaClient(worker, options, logger);
+        var client = new OpcUaClient(options, logger);
+        try
+        {
+            // Created now (not at connect) so a bad option, such as an invalid certificate, fails here.
+            client._worker = await client.CreateWorkerAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
         return client;
+    }
+
+    private async Task<ClientWorker> CreateWorkerAsync()
+    {
+        ClientWorker? created = null;
+        // The callback runs on that worker's thread; it only matters while the worker is the current one.
+        created = await ClientWorker.CreateAsync(_options, _logger, change => OnWorkerStateChange(created, change)).ConfigureAwait(false);
+        return created;
     }
 
     /// <summary>
@@ -89,11 +118,11 @@ public sealed partial class OpcUaClient : IAsyncDisposable
         ArgumentException.ThrowIfNullOrEmpty(discoveryUrl);
         await using var client = await CreateAsync(options).ConfigureAwait(false);
         var bytes = await client._worker.GetEndpointsAsync(discoveryUrl).WaitAsync(cancellationToken).ConfigureAwait(false);
-        return Decode(bytes, GetEndpointsResponse.Decode).Endpoints;
+        return ServiceCodec.Decode(bytes, GetEndpointsResponse.Decode).Endpoints;
     }
 
     /// <summary>Current connection state.</summary>
-    public ConnectionState State => _worker.State;
+    public ConnectionState State => _state;
 
     /// <summary>
     /// Raised on every state change, in order, on a thread-pool thread (never on the native worker,
@@ -124,63 +153,334 @@ public sealed partial class OpcUaClient : IAsyncDisposable
     /// The TCP connection always goes to <paramref name="endpointUrl"/>, even if the server
     /// advertises another host name in its endpoints (common on plant networks where that name
     /// does not resolve). When no endpoint fits, the exception message lists what the server offers.
+    /// Once connected, a lost connection is restored automatically (see
+    /// <see cref="OpcUaClientOptions.Reconnect"/>); a failed first connection is not retried.
     /// </remarks>
     /// <param name="endpointUrl">Server URL, for example <c>opc.tcp://plc01:4840</c>.</param>
     /// <param name="cancellationToken">Cancels connecting.</param>
     /// <exception cref="OpcUaException">The server is unreachable, refused the security or identity, or timed out.</exception>
-    /// <exception cref="InvalidOperationException">The client is already connected or connecting.</exception>
+    /// <exception cref="InvalidOperationException">The client is already connected, connecting or reconnecting.</exception>
     public async Task ConnectAsync(string endpointUrl, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(endpointUrl);
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        EndpointUrl = endpointUrl;
-        if (_worker.State != ConnectionState.Disconnected)
+        lock (_gate)
         {
-            throw new InvalidOperationException($"The client is {_worker.State}; disconnect first.");
+            if (_state != ConnectionState.Disconnected)
+            {
+                throw new InvalidOperationException($"The client is {_state}; disconnect first.");
+            }
+            _disconnectRequested = false;
+            EndpointUrl = endpointUrl;
+            SetState(ConnectionState.Connecting, StatusCodes.Good);
         }
-
-        var discovery = await _worker.GetEndpointsAsync(endpointUrl).WaitAsync(_options.ConnectTimeout, cancellationToken).ConfigureAwait(false);
-        var endpoint = EndpointSelector.Select(Decode(discovery, GetEndpointsResponse.Decode).Endpoints, _options);
-        var encoder = new BinaryEncoder();
-        endpoint.Encode(encoder);
-        var tokenType = _options.Identity is UserIdentity.UserNameIdentity ? UserTokenType.UserName : UserTokenType.Anonymous;
-        Endpoint = endpoint;
-        LogEndpoint(_logger, endpoint.SecurityMode, endpoint.SecurityPolicyUri ?? string.Empty, tokenType);
-
-        await _worker.ConnectAsync(endpointUrl, encoder.ToArray(), tokenType, cancellationToken).ConfigureAwait(false);
-        await ReadServerInfoAsync(cancellationToken).ConfigureAwait(false);
-        LogConnected(_logger, endpointUrl, _namespaceUris.Length, _limits.MaxNodesPerRead);
+        try
+        {
+            await ConnectCoreAsync(endpointUrl, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            lock (_gate)
+            {
+                if (_state == ConnectionState.Connecting)
+                {
+                    SetState(ConnectionState.Disconnected, ex is OpcUaException o ? o.StatusCode : StatusCodes.BadRequestCancelledByClient);
+                }
+            }
+            throw;
+        }
     }
 
-    /// <summary>Closes the session and the channel. Does nothing when not connected.</summary>
+    /// <summary>
+    /// One connection attempt on a new native client. On success the new client becomes the
+    /// current one, the state becomes Connected and subscriptions are moved to the new session.
+    /// </summary>
+    private async Task ConnectCoreAsync(string endpointUrl, CancellationToken cancellationToken)
+    {
+        var worker = await CreateWorkerAsync().ConfigureAwait(false);
+        try
+        {
+            var discovery = await worker.GetEndpointsAsync(endpointUrl).WaitAsync(_options.ConnectTimeout, cancellationToken).ConfigureAwait(false);
+            var endpoint = EndpointSelector.Select(ServiceCodec.Decode(discovery, GetEndpointsResponse.Decode).Endpoints, _options);
+            var encoder = new BinaryEncoder();
+            endpoint.Encode(encoder);
+            var tokenType = _options.Identity is UserIdentity.UserNameIdentity ? UserTokenType.UserName : UserTokenType.Anonymous;
+            Endpoint = endpoint;
+            LogEndpoint(_logger, endpoint.SecurityMode, endpoint.SecurityPolicyUri ?? string.Empty, tokenType);
+
+            await worker.ConnectAsync(endpointUrl, encoder.ToArray(), tokenType, cancellationToken).ConfigureAwait(false);
+            var (namespaces, limits) = await ReadServerInfoAsync(worker, cancellationToken).ConfigureAwait(false);
+
+            ClientWorker previous;
+            long generation;
+            lock (_gate)
+            {
+                if (_disconnectRequested || _disposed != 0)
+                {
+                    throw new OpcUaException(StatusCodes.BadConnectionClosed, "Disconnect was requested while connecting");
+                }
+                previous = _worker;
+                _worker = worker;
+                _namespaceUris = namespaces;
+                _limits = limits;
+                generation = ++_generation;
+                SetState(ConnectionState.Connected, StatusCodes.Good);
+            }
+            _engine.SessionUp(generation);
+            if (previous != worker)
+            {
+                _ = RetireAsync(previous, abandonSession: true);
+            }
+            LogConnected(_logger, endpointUrl, namespaces.Length, limits.MaxNodesPerRead);
+            if (worker.State != ConnectionState.Connected)
+            {
+                OnConnectionLost(StatusCodes.BadConnectionClosed); // died in the short gap above
+            }
+        }
+        catch
+        {
+            if (worker != _worker)
+            {
+                await RetireAsync(worker, abandonSession: false).ConfigureAwait(false);
+            }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Closes the session and the channel. Stops automatic reconnection. Subscriptions are kept on
+    /// the client and created again on the next <see cref="ConnectAsync"/>. Does nothing when not connected.
+    /// </summary>
     /// <param name="cancellationToken">Stops waiting for the server's answer.</param>
-    public Task DisconnectAsync(CancellationToken cancellationToken = default)
+    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        return _worker.DisconnectAsync(cancellationToken);
+        CancellationTokenSource? reconnect;
+        bool closeSession;
+        lock (_gate)
+        {
+            _disconnectRequested = true;
+            reconnect = _reconnect;
+            _reconnect = null;
+            closeSession = _state == ConnectionState.Connected;
+            if (_state is ConnectionState.Connected or ConnectionState.Reconnecting)
+            {
+                SetState(closeSession ? ConnectionState.Disconnecting : ConnectionState.Disconnected, StatusCodes.Good);
+            }
+        }
+        if (reconnect is not null)
+        {
+            await reconnect.CancelAsync().ConfigureAwait(false);
+        }
+        _engine.SessionDown();
+        if (closeSession)
+        {
+            try
+            {
+                await _worker.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    if (_state == ConnectionState.Disconnecting)
+                    {
+                        SetState(ConnectionState.Disconnected, StatusCodes.Good);
+                    }
+                }
+            }
+        }
     }
 
-    private async Task ReadServerInfoAsync(CancellationToken cancellationToken)
+    private async Task<(string[] Namespaces, OperationLimits Limits)> ReadServerInfoAsync(ClientWorker worker, CancellationToken cancellationToken)
     {
-        var results = await ReadChunkAsync(
-            [
-                new ReadValueId(WellKnownNodes.NamespaceArray),
-                new ReadValueId(WellKnownNodes.MaxNodesPerRead),
-                new ReadValueId(WellKnownNodes.MaxNodesPerWrite),
-                new ReadValueId(WellKnownNodes.MaxNodesPerBrowse),
-            ], TimestampsToReturn.Neither, 0, cancellationToken).ConfigureAwait(false);
+        var request = new ReadRequest(Header(), 0, TimestampsToReturn.Neither,
+        [
+            new ReadValueId(WellKnownNodes.NamespaceArray),
+            new ReadValueId(WellKnownNodes.MaxNodesPerRead),
+            new ReadValueId(WellKnownNodes.MaxNodesPerWrite),
+            new ReadValueId(WellKnownNodes.MaxNodesPerBrowse),
+            new ReadValueId(WellKnownNodes.MaxMonitoredItemsPerCall),
+        ]).Encode();
+        var bytes = await worker.SendAsync("Read", EncodingIds.ReadRequest, EncodingIds.ReadResponse, request, cancellationToken).ConfigureAwait(false);
+        var response = ServiceCodec.Decode(bytes, ReadResponse.Decode);
+        ServiceCodec.CheckServiceResult("Read", response.Header);
+        ServiceCodec.CheckCount("Read", response.Results.Length, 5);
+        var results = response.Results;
 
-        _namespaceUris = results[0].Value.TryGetValue(out string?[] uris) ? uris.Select(u => u ?? string.Empty).ToArray() : [];
+        var namespaces = results[0].Value.TryGetValue(out string?[] uris) ? uris.Select(u => u ?? string.Empty).ToArray() : [];
 
         // Server limit 0 or unreadable means "no limit"; keep request sizes reasonable anyway.
         static int Limit(DataValue v, int fallback) =>
             v.Status.IsGood && v.Value.TryGetValue(out uint n) && n > 0 ? (int)Math.Min(n, int.MaxValue) : fallback;
         var d = OperationLimits.Default;
-        _limits = new OperationLimits(
+        var limits = new OperationLimits(
             _options.MaxNodesPerRead ?? Limit(results[1], d.MaxNodesPerRead),
             _options.MaxNodesPerWrite ?? Limit(results[2], d.MaxNodesPerWrite),
-            _options.MaxNodesPerBrowse ?? Limit(results[3], d.MaxNodesPerBrowse));
+            _options.MaxNodesPerBrowse ?? Limit(results[3], d.MaxNodesPerBrowse))
+        {
+            MaxMonitoredItemsPerCall = Limit(results[4], d.MaxMonitoredItemsPerCall),
+        };
+        return (namespaces, limits);
     }
+
+    // ---- connection loss and reconnect --------------------------------------------------------
+
+    private void OnWorkerStateChange(ClientWorker? worker, ConnectionStateChange change)
+    {
+        if (worker is not null && worker == _worker && change.State == ConnectionState.Disconnected)
+        {
+            OnConnectionLost(change.Reason);
+        }
+    }
+
+    /// <summary>The current connection died (or is presumed dead). Runs on any thread; never blocks.</summary>
+    private void OnConnectionLost(StatusCode reason)
+    {
+        lock (_gate)
+        {
+            if (_state != ConnectionState.Connected || _disconnectRequested || _disposed != 0)
+            {
+                return;
+            }
+            LogConnectionLost(_logger, reason.Name);
+            if (!_options.Reconnect.Enabled)
+            {
+                SetState(ConnectionState.Disconnected, reason);
+            }
+            else
+            {
+                SetState(ConnectionState.Reconnecting, reason);
+                _reconnect = new CancellationTokenSource();
+                _ = ReconnectLoopAsync(_reconnect.Token);
+            }
+        }
+        _engine.SessionDown();
+    }
+
+    private async Task ReconnectLoopAsync(CancellationToken cancellationToken)
+    {
+        var url = EndpointUrl!;
+        for (var attempt = 1; !cancellationToken.IsCancellationRequested; attempt++)
+        {
+            TimeSpan delay;
+            lock (_gate)
+            {
+                delay = _options.Reconnect.DelayFor(attempt, _random);
+            }
+            try
+            {
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                LogReconnectAttempt(_logger, attempt, url);
+                await ConnectCoreAsync(url, cancellationToken).ConfigureAwait(false);
+                OpcUaTelemetry.ReconnectAttempts.Add(1, new KeyValuePair<string, object?>("result", "success"));
+                LogReconnected(_logger, url, attempt);
+                return;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex) when (ex is OpcUaException or TimeoutException or OperationCanceledException)
+            {
+                OpcUaTelemetry.ReconnectAttempts.Add(1, new KeyValuePair<string, object?>("result", "failed"));
+                LogReconnectFailed(_logger, attempt, ex.Message);
+            }
+        }
+    }
+
+    /// <summary>Shuts a worker down. With <paramref name="abandonSession"/> the session is left on the server for transfer.</summary>
+    private async Task RetireAsync(ClientWorker worker, bool abandonSession)
+    {
+        try
+        {
+            if (abandonSession && worker.State == ConnectionState.Connected)
+            {
+                await worker.AbandonSessionAsync().ConfigureAwait(false);
+            }
+            await worker.StopWorkerAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OpcUaException or ObjectDisposedException or InvalidOperationException)
+        {
+            LogRetireFailed(_logger, ex);
+        }
+        finally
+        {
+            worker.Dispose();
+        }
+    }
+
+    /// <summary>Changes the state and queues the event. Caller holds <see cref="_gate"/>.</summary>
+    private void SetState(ConnectionState state, StatusCode reason)
+    {
+        if (state == _state)
+        {
+            return;
+        }
+        _state = state;
+        OpcUaTelemetry.StateChanges.Add(1, new KeyValuePair<string, object?>("state", state.ToString()));
+        LogStateChange(_logger, state, reason.Name);
+        var change = new ConnectionStateChange(state, reason);
+        _events.Writer.TryWrite(() => StateChanged?.Invoke(this, change));
+    }
+
+    // ---- subscriptions -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Creates a subscription. Add monitored items to it with <see cref="OpcUaSubscription.AddItemsAsync"/>
+    /// and read the changes from <see cref="OpcUaSubscription.DataChanges"/>.
+    /// </summary>
+    /// <param name="options">Settings; defaults when null (1 s publishing interval).</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <exception cref="OpcUaException">Not connected, or the server refused (for example BadTooManySubscriptions).</exception>
+    public async Task<OpcUaSubscription> CreateSubscriptionAsync(SubscriptionOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        var subscription = new OpcUaSubscription(_engine, this, options ?? new SubscriptionOptions());
+        await subscription.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var generation = Interlocked.Read(ref _generation);
+            await subscription.CreateOnServerAsync(cancellationToken).ConfigureAwait(false);
+            subscription.Generation = generation;
+        }
+        catch
+        {
+            subscription.Gate.Release();
+            await subscription.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+        subscription.Gate.Release();
+        _subscriptions[subscription] = 0;
+        _engine.Register(subscription);
+        return subscription;
+    }
+
+    /// <summary>The subscriptions of this client that are not disposed.</summary>
+    public IReadOnlyCollection<OpcUaSubscription> Subscriptions => _subscriptions.Keys.ToArray();
+
+    void ISubscriptionHost.Forget(OpcUaSubscription subscription) => _subscriptions.TryRemove(subscription, out _);
+
+    Task<byte[]> ISubscriptionHost.SendAsync(string service, uint requestEncodingId, uint responseEncodingId, byte[] request, TimeSpan? timeout, CancellationToken cancellationToken) =>
+        _worker.SendAsync(service, requestEncodingId, responseEncodingId, request, cancellationToken, timeout);
+
+    RequestHeader ISubscriptionHost.Header() => Header();
+
+    TimeSpan ISubscriptionHost.RequestTimeout => _options.RequestTimeout;
+
+    int ISubscriptionHost.MaxMonitoredItemsPerCall => _limits.MaxMonitoredItemsPerCall;
+
+    long ISubscriptionHost.SessionGeneration => Interlocked.Read(ref _generation);
+
+    bool ISubscriptionHost.IsConnected => _state == ConnectionState.Connected;
+
+    uint ISubscriptionHost.NextClientHandle() => unchecked((uint)Interlocked.Increment(ref _nextClientHandle));
+
+    void ISubscriptionHost.RaiseEvent(Action raise) => _events.Writer.TryWrite(raise);
+
+    void ISubscriptionHost.ReportKeepAliveMissed() => OnConnectionLost(StatusCodes.BadTimeout);
+
+    ILogger ISubscriptionHost.Logger => _logger;
 
     // ---- read ----------------------------------------------------------------------------
 
@@ -220,9 +520,9 @@ public sealed partial class OpcUaClient : IAsyncDisposable
     {
         var request = new ReadRequest(Header(), maxAgeMs, timestamps, chunk).Encode();
         var bytes = await _worker.SendAsync("Read", EncodingIds.ReadRequest, EncodingIds.ReadResponse, request, cancellationToken).ConfigureAwait(false);
-        var response = Decode(bytes, ReadResponse.Decode);
-        CheckServiceResult("Read", response.Header);
-        CheckCount("Read", response.Results.Length, chunk.Count);
+        var response = ServiceCodec.Decode(bytes, ReadResponse.Decode);
+        ServiceCodec.CheckServiceResult("Read", response.Header);
+        ServiceCodec.CheckCount("Read", response.Results.Length, chunk.Count);
         return response.Results;
     }
 
@@ -251,9 +551,9 @@ public sealed partial class OpcUaClient : IAsyncDisposable
         {
             var request = new WriteRequest(Header(), chunk).Encode();
             var bytes = await _worker.SendAsync("Write", EncodingIds.WriteRequest, EncodingIds.WriteResponse, request, cancellationToken).ConfigureAwait(false);
-            var response = Decode(bytes, WriteResponse.Decode);
-            CheckServiceResult("Write", response.Header);
-            CheckCount("Write", response.Results.Length, chunk.Count);
+            var response = ServiceCodec.Decode(bytes, WriteResponse.Decode);
+            ServiceCodec.CheckServiceResult("Write", response.Header);
+            ServiceCodec.CheckCount("Write", response.Results.Length, chunk.Count);
             response.Results.CopyTo(results, offset);
         }, limit => _limits = _limits with { MaxNodesPerWrite = limit }).ConfigureAwait(false);
         return results;
@@ -285,9 +585,9 @@ public sealed partial class OpcUaClient : IAsyncDisposable
         {
             var request = new BrowseRequest(Header(), _options.MaxReferencesPerNode, chunk).Encode();
             var bytes = await _worker.SendAsync("Browse", EncodingIds.BrowseRequest, EncodingIds.BrowseResponse, request, cancellationToken).ConfigureAwait(false);
-            var response = Decode(bytes, BrowseResponse.Decode);
-            CheckServiceResult("Browse", response.Header);
-            CheckCount("Browse", response.Results.Length, chunk.Count);
+            var response = ServiceCodec.Decode(bytes, BrowseResponse.Decode);
+            ServiceCodec.CheckServiceResult("Browse", response.Header);
+            ServiceCodec.CheckCount("Browse", response.Results.Length, chunk.Count);
             var collected = await FollowContinuationPointsAsync(response.Results, cancellationToken).ConfigureAwait(false);
             collected.CopyTo(results, offset);
         }, limit => _limits = _limits with { MaxNodesPerBrowse = limit }).ConfigureAwait(false);
@@ -315,9 +615,9 @@ public sealed partial class OpcUaClient : IAsyncDisposable
                 var indexes = open.Keys.ToArray();
                 var request = new BrowseNextRequest(Header(), false, indexes.Select(i => open[i]).ToArray()).Encode();
                 var bytes = await _worker.SendAsync("BrowseNext", EncodingIds.BrowseNextRequest, EncodingIds.BrowseNextResponse, request, cancellationToken).ConfigureAwait(false);
-                var response = Decode(bytes, BrowseResponse.Decode);
-                CheckServiceResult("BrowseNext", response.Header);
-                CheckCount("BrowseNext", response.Results.Length, indexes.Length);
+                var response = ServiceCodec.Decode(bytes, BrowseResponse.Decode);
+                ServiceCodec.CheckServiceResult("BrowseNext", response.Header);
+                ServiceCodec.CheckCount("BrowseNext", response.Results.Length, indexes.Length);
                 for (var k = 0; k < indexes.Length; k++)
                 {
                     var i = indexes[k];
@@ -390,44 +690,13 @@ public sealed partial class OpcUaClient : IAsyncDisposable
 
     private RequestHeader Header() => new((uint)Math.Clamp(_options.RequestTimeout.TotalMilliseconds, 0, uint.MaxValue));
 
-    private static T Decode<T>(byte[] bytes, Func<BinaryDecoder, T> read)
-    {
-        try
-        {
-            var decoder = new BinaryDecoder(bytes);
-            var value = read(decoder);
-            decoder.EnsureFullyConsumed();
-            return value;
-        }
-        catch (OpcUaDecodingException ex)
-        {
-            throw new OpcUaException(StatusCodes.BadDecodingError, "Response could not be decoded", ex);
-        }
-    }
-
-    private static void CheckServiceResult(string service, ResponseHeader header)
-    {
-        if (header.ServiceResult.IsBad)
-        {
-            throw new OpcUaException(header.ServiceResult, $"{service} failed");
-        }
-    }
-
-    private static void CheckCount(string service, int actual, int expected)
-    {
-        if (actual != expected)
-        {
-            throw new OpcUaException(StatusCodes.BadUnexpectedError, $"{service} returned {actual} results for {expected} items");
-        }
-    }
-
     private async Task PumpEventsAsync()
     {
-        await foreach (var change in _events.Reader.ReadAllAsync().ConfigureAwait(false))
+        await foreach (var raise in _events.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             try
             {
-                StateChanged?.Invoke(this, change);
+                raise();
             }
             catch (Exception ex)
             {
@@ -439,21 +708,48 @@ public sealed partial class OpcUaClient : IAsyncDisposable
     /// <summary>Disconnects (briefly waiting for the server) and releases the native client.</summary>
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        foreach (var subscription in _subscriptions.Keys)
         {
-            return;
+            await subscription.DisposeAsync().ConfigureAwait(false); // deletes it on the server while still connected
         }
-        try
+        CancellationTokenSource? reconnect;
+        lock (_gate)
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            await _worker.DisconnectAsync(cts.Token).ConfigureAwait(false);
+            if (_disposed != 0)
+            {
+                return;
+            }
+            _disposed = 1;
+            _disconnectRequested = true;
+            reconnect = _reconnect;
+            _reconnect = null;
         }
-        catch (Exception ex) when (ex is OpcUaException or OperationCanceledException or ObjectDisposedException)
+        if (reconnect is not null)
         {
-            // Closing anyway.
+            await reconnect.CancelAsync().ConfigureAwait(false);
         }
-        await _worker.StopWorkerAsync().ConfigureAwait(false);
-        _worker.Dispose();
+        await _engine.DisposeAsync().ConfigureAwait(false);
+        if (_worker is { } worker)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await worker.DisconnectAsync(cts.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is OpcUaException or OperationCanceledException or ObjectDisposedException)
+            {
+                // Closing anyway.
+            }
+            await worker.StopWorkerAsync().ConfigureAwait(false);
+            worker.Dispose();
+        }
+        lock (_gate)
+        {
+            if (_state != ConnectionState.Disconnected)
+            {
+                SetState(ConnectionState.Disconnected, StatusCodes.Good);
+            }
+        }
         _events.Writer.TryComplete();
         await _eventPump.ConfigureAwait(false);
     }
@@ -467,6 +763,24 @@ public sealed partial class OpcUaClient : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not release browse continuation points")]
     private static partial void LogReleaseFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "A StateChanged handler threw")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "An event handler threw")]
     private static partial void LogHandlerFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "OPC UA client {State} ({Reason})")]
+    private static partial void LogStateChange(ILogger logger, ConnectionState state, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Connection lost: {Reason}")]
+    private static partial void LogConnectionLost(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reconnect attempt {Attempt} to {EndpointUrl}")]
+    private static partial void LogReconnectAttempt(ILogger logger, int attempt, string endpointUrl);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reconnected to {EndpointUrl} after {Attempts} attempt(s)")]
+    private static partial void LogReconnected(ILogger logger, string endpointUrl, int attempts);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reconnect attempt {Attempt} failed: {Error}")]
+    private static partial void LogReconnectFailed(ILogger logger, int attempt, string error);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Closing a previous native client failed")]
+    private static partial void LogRetireFailed(ILogger logger, Exception exception);
 }

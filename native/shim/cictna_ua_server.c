@@ -64,6 +64,11 @@ uint32_t cictna_ua_server_new(const cictna_ua_server_options *o, cictna_ua_serve
     if(o->max_nodes_per_write) sc.maxNodesPerWrite = o->max_nodes_per_write;
     if(o->max_nodes_per_browse) sc.maxNodesPerBrowse = o->max_nodes_per_browse;
     if(o->max_references_per_node) sc.maxReferencesPerNode = o->max_references_per_node;
+    /* How many values a monitored item may queue between two Publish requests. Clients ask for a
+     * queue size and the server revises it down to this. A larger limit lets a subscription ride
+     * out a longer outage without the server discarding values (it marks discards with the
+     * Overflow bit). */
+    if(o->max_monitored_item_queue_size) sc.queueSizeLimits.max = o->max_monitored_item_queue_size;
 
     /* Access control: replace the default (anonymous only) with our settings. */
     if(sc.accessControl.clear)
