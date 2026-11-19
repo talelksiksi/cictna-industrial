@@ -10,29 +10,7 @@ Legend: `[ ]` to do, `[x]` done.
 
 ## Open
 
-### 5. Prosys interop (closes Phase 1)
-Phase 1's exit criteria include the Prosys OPC UA Simulation Server, which is installed on the PC.
-- [ ] Get the latest code and build the native library locally (once, a few minutes), in a normal
-  PowerShell:
-  ```powershell
-  cd C:\Users\talel\source\personal\cictna-industrial
-  git pull
-  powershell -ExecutionPolicy Bypass -File native\build.ps1
-  ```
-  It ends with `== done: ...\native\out\win-x64\cictna_ua.dll`.
-- [ ] Start the Prosys OPC UA Simulation Server. Note its endpoint URL from the Status tab, usually
-  `opc.tcp://<pc-name>:53530/OPCUA/SimulationServer`.
-- [ ] In PowerShell, in the repo folder:
-  ```powershell
-  $env:CICTNA_PROSYS_URL = "opc.tcp://localhost:53530/OPCUA/SimulationServer"
-  dotnet test --project tests\Interop\Cictna.Industrial.OpcUa.InteropTests -c Release
-  ```
-- [ ] The secure-channel test fails on the first run: Prosys has not trusted our client certificate
-  yet. In Prosys, open the Certificates tab, find "Cictna Interop Client", choose Trust. Run the
-  command again: all 5 Prosys tests should pass (the certificate is kept in
-  `%TEMP%\cictna-interop`, so trusting once is enough).
-- [ ] Tell Claude the result (or paste the summary). Claude then writes the Phase 1 build record
-  with the Windows and Prosys results and closes the phase.
+Nothing open. The next PC item comes with Phase 2 (the Windows CI runner just has to be on).
 
 ---
 
@@ -50,6 +28,12 @@ Phase 1's exit criteria include the Prosys OPC UA Simulation Server, which is in
 
 ## Done
 
+- [x] 2026-11-19: Prosys interop passed (closes Phase 1). Prosys OPC UA Simulation Server on the
+  PC at `opc.tcp://TALEL-PC-NEW:53530/OPCUA/SimulationServer`: 5 passed, 0 failed (connect, browse
+  and read of the simulation signals, signals change over time, server info and limits,
+  GetEndpoints, Basic256Sha256 secure channel after trusting "Cictna Interop Client" in Prosys).
+  The 9 node-opcua tests skipped locally (no Node.js on the PC); CI runs them. Lesson: `$env:` variables
+  only live in the PowerShell window that set them; a new window or tab needs them set again. (Talel.)
 - [x] 2026-11-14: First green CI run on Windows and Linux (run 43542102950): native win-x64 built
   with MSVC on the self-hosted runner, 110 tests on Windows (105 passed, 5 Prosys skipped, 0
   failed), smoke test OK on both. Closes Phase 0.
