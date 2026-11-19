@@ -6,6 +6,7 @@ Industrial connectivity stack for CICTNA RDC, written in C# on .NET 10:
 - **Modbus TCP** client and server, pure C#
 - **PLC simulator** serving the same tags over OPC UA and Modbus, with fault injection
 - **Store-and-forward** buffer for collectors (SQLite, WAL mode)
+- **Triggers**: nine protocol-independent ways to decide when a value is worth acting on
 
 Proprietary, all rights reserved (see [LICENSE](LICENSE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)).
 
@@ -15,8 +16,8 @@ Proprietary, all rights reserved (see [LICENSE](LICENSE) and [THIRD-PARTY-NOTICE
 |---|---|---|
 | 0 | Repo, native build, packaging, CI, smoke test | Done (14 Nov 2026): CI green on Windows and Linux |
 | 1 | OPC UA client core | Done (19 Nov 2026): our test server and node-opcua on Windows and Linux CI, Prosys on the PC |
-| 2 | Subscriptions and resilience | next |
-| 3 | Security and certificates | |
+| 2 | Subscriptions, reconnect, triggers | Done (19 Nov 2026): chaos tests loss-free on Windows and Linux |
+| 3 | Security and certificates | next |
 | 4 | Modbus TCP | |
 | 5 | Simulator | |
 | 6 | Store-and-forward and 24-hour soak | |
@@ -29,7 +30,7 @@ A phase closes only when its exit criteria pass on Windows and Linux. See [CHANG
 - [docs/roadmap.md](docs/roadmap.md): goal, decisions, architecture, phases and exit criteria
 - [docs/pc-steps.md](docs/pc-steps.md): what has to be done on the Windows PC, with status
 - [docs/builds/](docs/builds/): one record per build (what, from which commit, verified where)
-- [docs/opcua-client.md](docs/opcua-client.md): how to use the OPC UA client (and the test server)
+- [docs/opcua-client.md](docs/opcua-client.md): how to use the OPC UA client: reads, writes, subscriptions, reconnect, triggers, security (and the test server)
 - [docs/native-layer.md](docs/native-layer.md): how open62541 is built, wrapped and loaded, and the open62541 behaviours we found
 - [docs/coding-standards.md](docs/coding-standards.md)
 

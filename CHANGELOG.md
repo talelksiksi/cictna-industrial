@@ -4,6 +4,44 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 
 ## [Unreleased]
 
+### Added (Phase 2: subscriptions and resilience, closed 19 Nov 2026)
+
+Phase 2 exit criteria met on Windows and Linux (CI run 44548900001, build record 0005): chaos tests with
+the server killed mid-subscription, the network cut, a silent network drop and a server restart;
+no lost notifications when the server can transfer; reconnect within 10 s of the network or
+server coming back.
+
+
+- Subscriptions: `OpcUaClient.CreateSubscriptionAsync`, `OpcUaSubscription` with monitored items
+  (sampling interval, queue size, deadband, data change trigger, monitoring mode, application tag).
+  Changes arrive in order through a bounded channel; a slow reader slows publishing down instead
+  of losing values. Items are created and deleted in chunks of the server's
+  MaxMonitoredItemsPerCall.
+- Publish engine in C#: Publish requests kept in flight, acknowledgements, Republish of sequence
+  gaps, keep-alive watchdog, BadTooManyPublishRequests and expired subscriptions handled.
+- Automatic reconnect (`OpcUaClientOptions.Reconnect`): fresh native client per connection,
+  exponential backoff with jitter, `ConnectionState.Reconnecting`. Subscriptions are transferred to
+  the new session (TransferSubscriptions plus Republish of what was missed) or recreated with the
+  same items; `OpcUaSubscription.EventOccurred` reports which.
+- `Cictna.Industrial.Triggers`: the nine trigger types (any change, threshold, deadband, rate of
+  change, direction, value change, bit, time based, connection), protocol independent.
+- `OpcUaServerOptions.MaxMonitoredItemQueueSize`.
+- Metrics: publish responses, notifications, republished and lost messages, keep-alive misses,
+  subscription recoveries, reconnect attempts.
+- Native shim ABI 3: `cictna_ua_client_close_channel`, server queue size limit.
+- Tests: subscription codecs against open62541; subscriptions on our server and node-opcua; chaos
+  tests (network cut, silent drop, server restart, disconnect while reconnecting) with zero lost
+  values when the server can transfer; 23 trigger tests.
+
+### Fixed (Phase 2)
+
+- The client switched to the URL a server advertises in FindServers when it differed from the one
+  dialled, which breaks connections through NAT, port forwards, Docker port mappings and proxies.
+  It now always stays on the given URL.
+- The Windows native build could fail after succeeding (a stray `$LASTEXITCODE` from
+  `cmake --version | Select-Object -First 1`).
+- The Windows CI cache never saved (gzip missing from the runner service's PATH).
+
 ## [0.1.0] - 2026-11-19
 
 First release: Phase 0 (foundation) and Phase 1 (OPC UA client core). Packages:
