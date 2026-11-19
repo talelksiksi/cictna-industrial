@@ -115,6 +115,39 @@ public enum TimestampsToReturn
     Neither = 3,
 }
 
+/// <summary>Whether a monitored item samples and reports (Part 4, 7.23).</summary>
+public enum MonitoringMode
+{
+    /// <summary>Neither sampled nor reported.</summary>
+    Disabled = 0,
+    /// <summary>Sampled and queued on the server, but not reported (used with triggering).</summary>
+    Sampling = 1,
+    /// <summary>Sampled and reported: the normal mode.</summary>
+    Reporting = 2,
+}
+
+/// <summary>What counts as a change for a monitored value (Part 4, 7.22.2).</summary>
+public enum DataChangeTrigger
+{
+    /// <summary>Only a change of the status (quality) is reported.</summary>
+    Status = 0,
+    /// <summary>A change of status or value is reported (the OPC UA default).</summary>
+    StatusValue = 1,
+    /// <summary>A change of status, value or source timestamp is reported.</summary>
+    StatusValueTimestamp = 2,
+}
+
+/// <summary>How small value changes are filtered out on the server (Part 4, 7.22.2).</summary>
+public enum DeadbandType
+{
+    /// <summary>Every change is reported.</summary>
+    None = 0,
+    /// <summary>Changes smaller than the deadband value, in engineering units, are dropped.</summary>
+    Absolute = 1,
+    /// <summary>Changes smaller than a percentage of the variable's EURange are dropped (needs an EURange property).</summary>
+    Percent = 2,
+}
+
 /// <summary>Security of the channel between client and server.</summary>
 public enum MessageSecurityMode
 {
