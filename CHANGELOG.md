@@ -4,7 +4,12 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 
 ## [Unreleased]
 
-### Added (Phase 1: OPC UA client core)
+### Added (Phase 1: OPC UA client core, closed 19 Nov 2026)
+
+Phase 1 exit criteria met: tests pass against our own test server, node-opcua (CI, Windows and
+Linux) and the Prosys OPC UA Simulation Server (5 of 5 on the Windows PC, including the
+Basic256Sha256 secure channel). Build record 0004.
+
 
 - `Cictna.Industrial.Core`: the common value model (OPC UA built-in types): `Variant` (scalars,
   arrays, matrices), `DataValue` with quality and timestamps, `StatusCode` with the full
@@ -30,6 +35,11 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
   now rejected unless `AcceptAnyServerCertificateForDevelopment` is set.
 - Connecting to a server that advertises another host name (node-opcua, many plant servers)
   failed during discovery; endpoint discovery and selection now always use the given URL.
+
+### Changed (CI)
+
+- The Windows build cache now saves and restores (gzip from Git\usr\bin on PATH for actions/cache);
+  the self-hosted runner installs the .NET SDK into its tool cache instead of the service profile.
 
 ### Added (documentation)
 

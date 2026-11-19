@@ -14,7 +14,7 @@ Proprietary, all rights reserved (see [LICENSE](LICENSE) and [THIRD-PARTY-NOTICE
 | Phase | Content | State |
 |---|---|---|
 | 0 | Repo, native build, packaging, CI, smoke test | Done (14 Nov 2026): CI green on Windows and Linux |
-| 1 | OPC UA client core | Code complete, green on Windows and Linux CI; waits for the Prosys interop run on the PC |
+| 1 | OPC UA client core | Done (19 Nov 2026): our test server and node-opcua on Windows and Linux CI, Prosys on the PC |
 | 2 | Subscriptions and resilience | next |
 | 3 | Security and certificates | |
 | 4 | Modbus TCP | |
