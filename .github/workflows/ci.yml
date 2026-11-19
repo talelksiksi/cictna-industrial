@@ -196,7 +196,7 @@ jobs:
       - name: Pack (all runtimes required)
         run: |
           version="${GITHUB_REF_NAME#v}"
-          for project in src/Cictna.Industrial.Core src/Cictna.Industrial.OpcUa.Native src/Cictna.Industrial.OpcUa; do
+          for project in src/Cictna.Industrial.Core src/Cictna.Industrial.OpcUa.Native src/Cictna.Industrial.OpcUa src/Cictna.Industrial.Triggers; do
             dotnet pack "$project" -c Release -o artifacts -p:RequireAllNativeRuntimes=true -p:Version="$version"
           done
 
