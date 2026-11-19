@@ -4,6 +4,12 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-19
+
+First release: Phase 0 (foundation) and Phase 1 (OPC UA client core). Packages:
+`Cictna.Industrial.Core`, `Cictna.Industrial.OpcUa.Native` (win-x64, linux-x64, linux-arm64),
+`Cictna.Industrial.OpcUa`, published to the private GitHub Packages feed of talelksiksi.
+
 ### Added (Phase 1: OPC UA client core, closed 19 Nov 2026)
 
 Phase 1 exit criteria met: tests pass against our own test server, node-opcua (CI, Windows and
