@@ -24,7 +24,7 @@ internal static class EndpointSelector
 {
     private const string UaTcp = "http://opcfoundation.org/UA-Profile/Transport/uatcp-uasc-uabinary";
 
-    public static EndpointDescription Select(IReadOnlyList<EndpointDescription> endpoints, OpcUaClientOptions options)
+    public static EndpointDescription Select(IReadOnlyList<EndpointDescription> endpoints, OpcUaClientOptions options, bool hasCertificate)
     {
         var tokenType = options.Identity is UserIdentity.UserNameIdentity ? UserTokenType.UserName : UserTokenType.Anonymous;
 
@@ -32,12 +32,12 @@ internal static class EndpointSelector
             .Where(e => e.TransportProfileUri is null || e.TransportProfileUri.Length == 0 || e.TransportProfileUri == UaTcp)
             .Where(e => options.SecurityMode == MessageSecurityMode.Invalid || e.SecurityMode == options.SecurityMode)
             .Where(e => options.SecurityPolicyUri is null || e.SecurityPolicyUri == options.SecurityPolicyUri)
-            .Where(e => options.Certificate is not null || e.SecurityMode == MessageSecurityMode.None)
+            .Where(e => hasCertificate || e.SecurityMode == MessageSecurityMode.None)
             .ToList();
 
         if (candidates.Count == 0)
         {
-            var reason = options.Certificate is null && options.SecurityMode is MessageSecurityMode.Sign or MessageSecurityMode.SignAndEncrypt
+            var reason = !hasCertificate && options.SecurityMode is MessageSecurityMode.Sign or MessageSecurityMode.SignAndEncrypt
                 ? "a certificate is required for " + options.SecurityMode
                 : $"none matches mode {options.SecurityMode} and policy {Short(options.SecurityPolicyUri) ?? "any"}";
             throw new OpcUaException(StatusCodes.BadSecurityModeRejected,

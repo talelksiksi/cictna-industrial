@@ -181,6 +181,13 @@ public sealed record OpcUaClientOptions
     /// </summary>
     public CertificateStore? CertificateStore { get; init; }
 
+    /// <summary>
+    /// How the store creates and renews this client's own certificate (validity, renewal window,
+    /// a CA to sign it). Null: self-signed for <see cref="ApplicationUri"/> and
+    /// <see cref="ApplicationName"/>, two years, renewed 30 days before it expires.
+    /// </summary>
+    public OwnCertificateSettings? OwnCertificate { get; init; }
+
     /// <summary>The user identity for the session.</summary>
     public UserIdentity Identity { get; init; } = UserIdentity.Anonymous;
 

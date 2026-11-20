@@ -383,7 +383,10 @@ public sealed class CertificateStore
             return data; // DER always starts with a SEQUENCE
         }
         var text = System.Text.Encoding.ASCII.GetString(data);
-        var fields = PemEncoding.Find(text);
+        if (!PemEncoding.TryFind(text, out var fields))
+        {
+            throw new FormatException("Neither DER nor PEM.");
+        }
         if (text[fields.Label] != pemLabel)
         {
             throw new FormatException($"Expected PEM \"{pemLabel}\", found \"{text[fields.Label]}\".");

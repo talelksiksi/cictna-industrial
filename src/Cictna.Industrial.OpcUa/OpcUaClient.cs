@@ -115,7 +115,8 @@ public sealed partial class OpcUaClient : IAsyncDisposable, ISubscriptionHost
         var certificate = _options.Certificate;
         if (store is not null && certificate is null && _options.SecurityMode != MessageSecurityMode.None)
         {
-            certificate = store.GetOrCreateApplicationCertificate(new OwnCertificateSettings(_options.ApplicationUri, _options.ApplicationName), out var renewed);
+            certificate = store.GetOrCreateApplicationCertificate(
+                _options.OwnCertificate ?? new OwnCertificateSettings(_options.ApplicationUri, _options.ApplicationName), out var renewed);
             if (renewed)
             {
                 LogCertificateRenewed(_logger, certificate.Thumbprint, certificate.NotAfter);
@@ -289,16 +290,18 @@ public sealed partial class OpcUaClient : IAsyncDisposable, ISubscriptionHost
     {
         var (certificate, trustList) = PrepareSecurity();
         var worker = await CreateWorkerAsync(certificate, trustList).ConfigureAwait(false);
+        var serverCertificateAccepted = false; // a refusal after this point came from the server
         try
         {
             var discovery = await worker.GetEndpointsAsync(endpointUrl).WaitAsync(_options.ConnectTimeout, cancellationToken).ConfigureAwait(false);
-            var endpoint = EndpointSelector.Select(ServiceCodec.Decode(discovery, GetEndpointsResponse.Decode).Endpoints, _options);
+            var endpoint = EndpointSelector.Select(ServiceCodec.Decode(discovery, GetEndpointsResponse.Decode).Endpoints, _options, certificate is not null);
             var encoder = new BinaryEncoder();
             endpoint.Encode(encoder);
             var tokenType = _options.Identity is UserIdentity.UserNameIdentity ? UserTokenType.UserName : UserTokenType.Anonymous;
             Endpoint = endpoint;
             LogEndpoint(_logger, endpoint.SecurityMode, endpoint.SecurityPolicyUri ?? string.Empty, tokenType);
             CheckServerCertificate(endpoint, trustList);
+            serverCertificateAccepted = true;
 
             await worker.ConnectAsync(endpointUrl, encoder.ToArray(), tokenType, cancellationToken).ConfigureAwait(false);
             var (namespaces, limits) = await ReadServerInfoAsync(worker, cancellationToken).ConfigureAwait(false);
@@ -335,7 +338,7 @@ public sealed partial class OpcUaClient : IAsyncDisposable, ISubscriptionHost
             {
                 await RetireAsync(worker, abandonSession: false).ConfigureAwait(false);
             }
-            if (ex is OpcUaException opcua && ExplainRefusedByServer(opcua, Endpoint, certificate) is var explained && explained != opcua)
+            if (serverCertificateAccepted && ex is OpcUaException opcua && ExplainRefusedByServer(opcua, Endpoint, certificate) is var explained && explained != opcua)
             {
                 throw explained;
             }

@@ -44,6 +44,13 @@ public sealed record OpcUaServerOptions
     /// </summary>
     public bool AcceptAnyClientCertificateForDevelopment { get; init; }
 
+    /// <summary>
+    /// How the store creates and renews the server certificate (validity, renewal window, a CA to
+    /// sign it). Null: self-signed for <see cref="ApplicationUri"/> with the machine name and
+    /// "localhost" as host names, two years, renewed 30 days before it expires (at the next start).
+    /// </summary>
+    public OwnCertificateSettings? OwnCertificate { get; init; }
+
     /// <summary>How often the store is checked for trust list changes and refused clients. Default 1 s.</summary>
     public TimeSpan TrustListRefreshInterval { get; init; } = TimeSpan.FromSeconds(1);
 
@@ -145,7 +152,7 @@ public sealed partial class OpcUaServer : IAsyncDisposable
         var store = options.CertificateStore;
         if (options.Certificate is null && store is not null)
         {
-            var certificate = store.GetOrCreateApplicationCertificate(new OwnCertificateSettings(options.ApplicationUri, options.ApplicationName)
+            var certificate = store.GetOrCreateApplicationCertificate(options.OwnCertificate ?? new OwnCertificateSettings(options.ApplicationUri, options.ApplicationName)
             {
                 DnsNames = [Environment.MachineName, "localhost"],
             }, out var renewed);
