@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Modbus TCP client and server for the Cictna industrial stack, in pure C#. Function codes 1, 2, 3, 4, 5, 6, 15, 16 and 23, unit IDs, word and byte order options, timeouts, pipelining and automatic reconnect. Values map into the common DataValue model.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cictna.Industrial.Core\Cictna.Industrial.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cictna.Industrial.Modbus.Tests" />
+    <InternalsVisibleTo Include="Cictna.Industrial.Modbus.FuzzTests" />
+  </ItemGroup>
+
+</Project>
