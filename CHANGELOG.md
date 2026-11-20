@@ -4,7 +4,11 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 
 ## [Unreleased]
 
-### Added (Phase 4: Modbus TCP)
+### Added (Phase 4: Modbus TCP, closed 20 Nov 2026)
+
+Phase 4 exit criteria met on Windows and Linux (CI run 44714362878, build record 0007): unit tests per
+function code, interop with two independent implementations in both directions, parser fuzzing
+without crashes.
 
 - `Cictna.Industrial.Modbus`, pure C#: `ModbusTcpClient` and `ModbusTcpServer` for function codes
   1, 2, 3, 4, 5, 6, 15, 16 and 23, unit IDs, and `SendRawAsync` for any other function code.
