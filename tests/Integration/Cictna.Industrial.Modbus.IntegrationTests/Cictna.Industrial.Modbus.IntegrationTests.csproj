@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Modbus client against our own Modbus server over TCP on 127.0.0.1, plus scripted servers and
+    clients that misbehave on purpose (late, split and merged frames, broken networks).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The network-breaking relay from the OPC UA integration tests, shared as source. -->
+    <Compile Include="..\Cictna.Industrial.OpcUa.IntegrationTests\TcpProxy.cs" Link="TcpProxy.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cictna.Industrial.Modbus\Cictna.Industrial.Modbus.csproj" />
+  </ItemGroup>
+
+</Project>
