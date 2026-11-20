@@ -29,7 +29,7 @@
 #endif
 
 /* 1: Phase 0 (identity, self test). 2: Phase 1 (client, test server, codec, certificates, logs). */
-#define CICTNA_UA_ABI_VERSION 3
+#define CICTNA_UA_ABI_VERSION 4
 
 /* Feature flags returned by cictna_ua_features(). */
 #define CICTNA_UA_FEATURE_ENCRYPTION      0x0001u
@@ -126,9 +126,21 @@ typedef struct {
     size_t private_key_len;
     const char *username;                  /* NULL: anonymous */
     const char *password;
-    uint32_t accept_any_server_certificate;/* development only; trust lists come in Phase 3 */
+    uint32_t accept_any_server_certificate;/* development only: skips server certificate checks */
     int32_t log_level;                     /* minimum level queued for the managed side */
+    const uint8_t *trust_list;             /* ABI 4. Binary TrustListDataType (trusted and issuer
+                                            * certificates and CRLs) that server certificates
+                                            * are checked against. NULL: an empty list, which
+                                            * rejects every server certificate. */
+    size_t trust_list_len;
 } cictna_ua_client_options;
+
+/* Checks a certificate (DER) against a binary TrustListDataType the way open62541 checks a peer
+ * during the handshake: chain, trust, validity period, revocation and CA use (ABI 4). Returns Good
+ * or the specific BadCertificate... code. Lets the client say which side refused a secure channel:
+ * the handshake itself only reports BadSecurityChecksFailed for both. */
+CICTNA_UA_API uint32_t cictna_ua_verify_certificate(const uint8_t *trust_list, size_t trust_list_len,
+                                                    const uint8_t *certificate, size_t certificate_len);
 
 /* Creates a client. Nothing is connected yet. */
 CICTNA_UA_API uint32_t cictna_ua_client_new(const cictna_ua_client_options *options,
@@ -228,6 +240,11 @@ typedef struct {
     int32_t log_level;
     uint32_t max_monitored_item_queue_size; /* ABI 3. Upper limit for a monitored item's queue;
                                              * 0: open62541 default (100) */
+    uint32_t accept_any_client_certificate; /* ABI 4. Development only: skips client certificate
+                                             * checks. Otherwise clients are checked against
+                                             * trust_list (empty: every client is rejected). */
+    const uint8_t *trust_list;              /* ABI 4. Binary TrustListDataType, see the client */
+    size_t trust_list_len;
 } cictna_ua_server_options;
 
 CICTNA_UA_API uint32_t cictna_ua_server_new(const cictna_ua_server_options *options,
@@ -235,6 +252,18 @@ CICTNA_UA_API uint32_t cictna_ua_server_new(const cictna_ua_server_options *opti
 
 /* Opens the listen socket. */
 CICTNA_UA_API uint32_t cictna_ua_server_start(cictna_ua_server *server);
+
+/* Replaces the trust list client certificates are checked against (ABI 4), for example after an
+ * operator moved a rejected certificate to the trusted folder. New connections use it at once.
+ * BadInvalidState when the server accepts any client certificate or has no certificate. */
+CICTNA_UA_API uint32_t cictna_ua_server_set_trust_list(cictna_ua_server *server,
+                                                       const uint8_t *trust_list, size_t len);
+
+/* The client certificates the server refused since it started (ABI 4), as a binary
+ * TrustListDataType whose trustedCertificates hold them (free with cictna_ua_free). open62541
+ * keeps at most 100 and then starts over, so poll it regularly. */
+CICTNA_UA_API uint32_t cictna_ua_server_get_rejected(cictna_ua_server *server,
+                                                     uint8_t **out, size_t *out_len);
 
 /* Runs one iteration of the server's event loop without blocking. *next_ms receives the time
  * until the server next needs to run (call again sooner if there is work). */

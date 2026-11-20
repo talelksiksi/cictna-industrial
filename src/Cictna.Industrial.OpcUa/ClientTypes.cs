@@ -105,7 +105,7 @@ public abstract record UserIdentity
 /// </summary>
 /// <param name="Certificate">The X.509 certificate (DER).</param>
 /// <param name="PrivateKey">The private key (DER). Keep it secret: anyone with it can impersonate the application.</param>
-public sealed record ApplicationCertificate(byte[] Certificate, byte[] PrivateKey)
+public sealed partial record ApplicationCertificate(byte[] Certificate, byte[] PrivateKey)
 {
     /// <summary>
     /// Creates a self-signed certificate (RSA, SHA-256). Fine for tests and for plants that trust
@@ -167,9 +167,19 @@ public sealed record OpcUaClientOptions
 
     /// <summary>
     /// Accept any server certificate without checking it. For development and tests only: it allows
-    /// a man-in-the-middle. Phase 3 adds trust lists; until then secure connections need this flag.
+    /// a man-in-the-middle. Otherwise server certificates are checked against the
+    /// <see cref="CertificateStore"/>'s trust list (without a store, every server is refused).
     /// </summary>
     public bool AcceptAnyServerCertificateForDevelopment { get; init; }
+
+    /// <summary>
+    /// The client's certificate store. Server certificates are checked against its trust list,
+    /// read again for every connection, so a certificate moved to trusted/certs counts from the
+    /// next attempt on. A refused server certificate is saved to rejected/certs. When
+    /// <see cref="Certificate"/> is null the client's own certificate comes from the store too:
+    /// created on first use and renewed before it expires.
+    /// </summary>
+    public CertificateStore? CertificateStore { get; init; }
 
     /// <summary>The user identity for the session.</summary>
     public UserIdentity Identity { get; init; } = UserIdentity.Anonymous;

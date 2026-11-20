@@ -51,6 +51,8 @@ internal unsafe struct ClientOptionsNative
     public byte* Password;
     public uint AcceptAnyServerCertificate;
     public int LogLevel;
+    public byte* TrustList;
+    public nuint TrustListLength;
 }
 
 /// <summary>Mirror of cictna_ua_server_options in cictna_ua.h. Field order and types must match exactly.</summary>
@@ -75,6 +77,9 @@ internal unsafe struct ServerOptionsNative
     public uint MaxReferencesPerNode;
     public int LogLevel;
     public uint MaxMonitoredItemQueueSize;
+    public uint AcceptAnyClientCertificate;
+    public byte* TrustList;
+    public nuint TrustListLength;
 }
 
 /// <summary>

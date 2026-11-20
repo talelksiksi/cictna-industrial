@@ -23,6 +23,7 @@ public sealed class SecureTestServer : IAsyncLifetime
             Certificate = certificate,
             AllowAnonymous = false,
             User = new UserIdentity.UserNameIdentity(User, Password),
+            AcceptAnyClientCertificateForDevelopment = true, // trust lists are tested in TrustTests
         });
     }
 
@@ -146,6 +147,7 @@ public sealed class SecurityTests(SecureTestServer server) : IClassFixture<Secur
                 Port = port,
                 ApplicationUri = "urn:cictna:test:secure-types",
                 Certificate = ApplicationCertificate.CreateSelfSigned("urn:cictna:test:secure-types", "Types"),
+                AcceptAnyClientCertificateForDevelopment = true,
             },
         };
         await plain.InitializeAsync();

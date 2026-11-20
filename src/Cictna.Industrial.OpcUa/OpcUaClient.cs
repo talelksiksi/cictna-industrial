@@ -97,12 +97,102 @@ public sealed partial class OpcUaClient : IAsyncDisposable, ISubscriptionHost
         return client;
     }
 
-    private async Task<ClientWorker> CreateWorkerAsync()
+    private async Task<ClientWorker> CreateWorkerAsync(ApplicationCertificate? certificate = null, byte[]? trustList = null)
     {
         ClientWorker? created = null;
         // The callback runs on that worker's thread; it only matters while the worker is the current one.
-        created = await ClientWorker.CreateAsync(_options, _logger, change => OnWorkerStateChange(created, change)).ConfigureAwait(false);
+        created = await ClientWorker.CreateAsync(_options, _logger, change => OnWorkerStateChange(created, change), certificate, trustList).ConfigureAwait(false);
         return created;
+    }
+
+    /// <summary>
+    /// The certificate and trust list for one connection. With a store both are read fresh, so a
+    /// renewed own certificate and newly trusted servers apply from the next connection on.
+    /// </summary>
+    private (ApplicationCertificate? Certificate, byte[]? TrustList) PrepareSecurity()
+    {
+        var store = _options.CertificateStore;
+        var certificate = _options.Certificate;
+        if (store is not null && certificate is null && _options.SecurityMode != MessageSecurityMode.None)
+        {
+            certificate = store.GetOrCreateApplicationCertificate(new OwnCertificateSettings(_options.ApplicationUri, _options.ApplicationName), out var renewed);
+            if (renewed)
+            {
+                LogCertificateRenewed(_logger, certificate.Thumbprint, certificate.NotAfter);
+            }
+        }
+        if (certificate is not null && certificate.ExpiresWithin(TimeSpan.FromDays(30)))
+        {
+            LogCertificateExpiring(_logger, certificate.Thumbprint, certificate.NotAfter);
+        }
+        if (certificate is not null && _options.AcceptAnyServerCertificateForDevelopment)
+        {
+            LogAcceptAny(_logger);
+        }
+        return (certificate, store?.ReadTrustList().Encode());
+    }
+
+    /// <summary>
+    /// Checks the server certificate of a secure endpoint before connecting, with the same rules
+    /// open62541 applies in the handshake. Doing it first gives the precise reason and tells us
+    /// which side refused: the handshake reports BadSecurityChecksFailed whether the client refused
+    /// the server or the server refused the client. A refused certificate is saved to the store's
+    /// rejected folder for an operator to review.
+    /// </summary>
+    private void CheckServerCertificate(EndpointDescription endpoint, byte[]? trustList)
+    {
+        if (endpoint.SecurityMode is MessageSecurityMode.None or MessageSecurityMode.Invalid || _options.AcceptAnyServerCertificateForDevelopment)
+        {
+            return;
+        }
+        if (endpoint.ServerCertificate is not { Length: > 0 } der)
+        {
+            throw new OpcUaException(StatusCodes.BadCertificateInvalid, "The secure endpoint has no server certificate");
+        }
+        var list = trustList is null ? TrustList.Empty : TrustList.Decode(new BinaryDecoder(trustList));
+        var status = list.Verify(der);
+        if (status.IsGood)
+        {
+            return;
+        }
+        var who = Describe(der);
+        var hint = " Configure OpcUaClientOptions.CertificateStore and trust it there.";
+        if (_options.CertificateStore is { } store)
+        {
+            store.Reject(der);
+            hint = $" It was saved to {store.RejectedCertsPath}; to trust this server, move it to {store.TrustedCertsPath} (or call CertificateStore.TrustRejected).";
+        }
+        LogServerRejected(_logger, who, status.Name);
+        throw new OpcUaException(status, $"The server certificate {who} was refused ({status.Name}).{hint}");
+    }
+
+    /// <summary>
+    /// The server closed the secure channel although its certificate passed our check: it refused
+    /// ours. Says which certificate to trust on the server.
+    /// </summary>
+    private static OpcUaException ExplainRefusedByServer(OpcUaException error, EndpointDescription? endpoint, ApplicationCertificate? own)
+    {
+        if (error.StatusCode != StatusCodes.BadSecurityChecksFailed && !error.StatusCode.Name.StartsWith("BadCertificate", StringComparison.Ordinal)
+            || endpoint is null || endpoint.SecurityMode is MessageSecurityMode.None || own is null)
+        {
+            return error;
+        }
+        return new OpcUaException(error.StatusCode,
+            $"The server refused this client's certificate {Describe(own.Certificate)} ({error.StatusCode.Name}). Trust it on the server (for a Cictna server: move it from rejected/certs to trusted/certs in its certificate store).",
+            error);
+    }
+
+    private static string Describe(byte[] der)
+    {
+        try
+        {
+            var certificate = new ApplicationCertificate(der, []);
+            return $"{certificate.Subject} [{certificate.Thumbprint}]";
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return $"({der.Length} bytes, not parsable)";
+        }
     }
 
     /// <summary>
@@ -197,7 +287,8 @@ public sealed partial class OpcUaClient : IAsyncDisposable, ISubscriptionHost
     /// </summary>
     private async Task ConnectCoreAsync(string endpointUrl, CancellationToken cancellationToken)
     {
-        var worker = await CreateWorkerAsync().ConfigureAwait(false);
+        var (certificate, trustList) = PrepareSecurity();
+        var worker = await CreateWorkerAsync(certificate, trustList).ConfigureAwait(false);
         try
         {
             var discovery = await worker.GetEndpointsAsync(endpointUrl).WaitAsync(_options.ConnectTimeout, cancellationToken).ConfigureAwait(false);
@@ -207,6 +298,7 @@ public sealed partial class OpcUaClient : IAsyncDisposable, ISubscriptionHost
             var tokenType = _options.Identity is UserIdentity.UserNameIdentity ? UserTokenType.UserName : UserTokenType.Anonymous;
             Endpoint = endpoint;
             LogEndpoint(_logger, endpoint.SecurityMode, endpoint.SecurityPolicyUri ?? string.Empty, tokenType);
+            CheckServerCertificate(endpoint, trustList);
 
             await worker.ConnectAsync(endpointUrl, encoder.ToArray(), tokenType, cancellationToken).ConfigureAwait(false);
             var (namespaces, limits) = await ReadServerInfoAsync(worker, cancellationToken).ConfigureAwait(false);
@@ -237,11 +329,15 @@ public sealed partial class OpcUaClient : IAsyncDisposable, ISubscriptionHost
                 OnConnectionLost(StatusCodes.BadConnectionClosed); // died in the short gap above
             }
         }
-        catch
+        catch (Exception ex)
         {
             if (worker != _worker)
             {
                 await RetireAsync(worker, abandonSession: false).ConfigureAwait(false);
+            }
+            if (ex is OpcUaException opcua && ExplainRefusedByServer(opcua, Endpoint, certificate) is var explained && explained != opcua)
+            {
+                throw explained;
             }
             throw;
         }
@@ -780,6 +876,18 @@ public sealed partial class OpcUaClient : IAsyncDisposable, ISubscriptionHost
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reconnect attempt {Attempt} failed: {Error}")]
     private static partial void LogReconnectFailed(ILogger logger, int attempt, string error);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Client certificate renewed: {Thumbprint}, valid until {NotAfter:u}. Servers that trust the old one need to trust this one (or the CA that signed it).")]
+    private static partial void LogCertificateRenewed(ILogger logger, string thumbprint, DateTime notAfter);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Client certificate {Thumbprint} expires on {NotAfter:u}")]
+    private static partial void LogCertificateExpiring(ILogger logger, string thumbprint, DateTime notAfter);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Accepting any server certificate (development mode). Never use this on a plant network.")]
+    private static partial void LogAcceptAny(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server certificate {Certificate} refused: {Status}")]
+    private static partial void LogServerRejected(ILogger logger, string certificate, string status);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Closing a previous native client failed")]
     private static partial void LogRetireFailed(ILogger logger, Exception exception);

@@ -19,6 +19,14 @@ void *cictna_decode(const UA_DataType *type, const uint8_t *data, size_t len, UA
 /* Encodes a value; the buffer is allocated by open62541 (free with UA_free / cictna_ua_free). */
 UA_StatusCode cictna_encode(const void *value, const UA_DataType *type, uint8_t **out, size_t *out_len);
 
+#ifdef UA_ENABLE_ENCRYPTION
+#include <open62541/plugin/certificategroup.h>
+/* Initializes `group` as open62541's in-memory certificate store, filled from a binary
+ * TrustListDataType (NULL or empty: no trusted certificates, so everything is rejected). */
+UA_StatusCode cictna_memorystore(UA_CertificateGroup *group, const uint8_t *trust_list, size_t len,
+                                 const UA_Logger *logger);
+#endif
+
 /* Duplicates a NUL-terminated string into a UA_String (empty when NULL). */
 UA_String cictna_string(const char *s);
 

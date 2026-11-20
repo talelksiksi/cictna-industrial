@@ -116,6 +116,15 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_start")]
     internal static partial uint ServerStart(ServerHandle server);
 
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_verify_certificate")]
+    internal static unsafe partial uint VerifyCertificate(byte* trustList, nuint trustListLength, byte* certificate, nuint certificateLength);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_set_trust_list")]
+    internal static unsafe partial uint ServerSetTrustList(ServerHandle server, byte* trustList, nuint length);
+
+    [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_get_rejected")]
+    internal static partial uint ServerGetRejected(ServerHandle server, out nint rejected, out nuint length);
+
     [LibraryImport(LibraryName, EntryPoint = "cictna_ua_server_iterate")]
     internal static partial uint ServerIterate(ServerHandle server, out uint nextMs);
 

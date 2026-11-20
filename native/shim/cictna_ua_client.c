@@ -129,21 +129,19 @@ uint32_t cictna_ua_client_new(const cictna_ua_client_options *o, cictna_ua_clien
         UA_ByteString key = {o->private_key_len, (UA_Byte *)(uintptr_t)o->private_key};
         rc = UA_ClientConfig_setDefaultEncryption(&cc, cert, key, NULL, 0, NULL, 0);
         if(rc == UA_STATUSCODE_GOOD) {
-            /* Server certificate validation. With an empty trust list open62541 keeps its
-             * default, which accepts every certificate. That is not acceptable outside a lab,
-             * so unless the caller explicitly asked for accept-any (development), install an
-             * in-memory trust store. Empty for now, so it rejects every server certificate;
-             * Phase 3 fills it with the trusted certificates. Secure by default. */
-            if(cc.certificateVerification.clear)
-                cc.certificateVerification.clear(&cc.certificateVerification);
+            /* Server certificate validation. With no trust list open62541 keeps its default,
+             * which accepts every certificate. That is never acceptable outside a lab, so
+             * unless the caller explicitly asked for accept-any (development), the in-memory
+             * store is filled with the caller's trust list; an empty one rejects everything.
+             * Secure by default. The store checks the chain, validity period and CRLs
+             * (Part 6, 6.1.3). */
             if(o->accept_any_server_certificate) {
+                if(cc.certificateVerification.clear)
+                    cc.certificateVerification.clear(&cc.certificateVerification);
                 UA_CertificateGroup_AcceptAll(&cc.certificateVerification);
             } else {
-                UA_NodeId group = UA_NODEID_NUMERIC(0, UA_NS0ID_SERVERCONFIGURATION_CERTIFICATEGROUPS_DEFAULTAPPLICATIONGROUP);
-                UA_TrustListDataType trust;
-                UA_TrustListDataType_init(&trust);
-                rc = UA_CertificateGroup_Memorystore(&cc.certificateVerification, &group, &trust,
-                                                     cc.logging, NULL);
+                rc = cictna_memorystore(&cc.certificateVerification, o->trust_list, o->trust_list_len,
+                                        cc.logging);
             }
         }
     } else

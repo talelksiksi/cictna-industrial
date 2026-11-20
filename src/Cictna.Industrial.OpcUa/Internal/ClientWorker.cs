@@ -23,6 +23,8 @@ internal sealed partial class ClientWorker : NativeWorker
     private const uint IterateTimeoutMs = 5;
 
     private readonly OpcUaClientOptions _options;
+    private readonly ApplicationCertificate? _certificate;
+    private readonly byte[]? _trustList;
     private readonly Action<ConnectionStateChange> _onStateChange;
     private readonly Dictionary<uint, PendingRequest> _pending = [];
     private ClientHandle? _handle;
@@ -31,17 +33,26 @@ internal sealed partial class ClientWorker : NativeWorker
     private TaskCompletionSource? _connectWaiter;
     private TaskCompletionSource? _disconnectWaiter;
 
-    private ClientWorker(OpcUaClientOptions options, ILogger logger, Action<ConnectionStateChange> onStateChange)
+    private ClientWorker(OpcUaClientOptions options, ILogger logger, Action<ConnectionStateChange> onStateChange,
+        ApplicationCertificate? certificate, byte[]? trustList)
         : base("cictna-opcua-client", logger)
     {
         _options = options;
         _onStateChange = onStateChange;
+        _certificate = certificate ?? options.Certificate;
+        _trustList = trustList;
     }
 
     /// <summary>Starts the thread and creates the native client on it.</summary>
-    public static async Task<ClientWorker> CreateAsync(OpcUaClientOptions options, ILogger logger, Action<ConnectionStateChange> onStateChange)
+    /// <param name="options">Client settings.</param>
+    /// <param name="logger">Where log lines go.</param>
+    /// <param name="onStateChange">Called on the worker thread for every native state change.</param>
+    /// <param name="certificate">This connection's own certificate; the options' when null.</param>
+    /// <param name="trustList">Encoded trust list server certificates are checked against; null for an empty one.</param>
+    public static async Task<ClientWorker> CreateAsync(OpcUaClientOptions options, ILogger logger, Action<ConnectionStateChange> onStateChange,
+        ApplicationCertificate? certificate = null, byte[]? trustList = null)
     {
-        var worker = new ClientWorker(options, logger, onStateChange);
+        var worker = new ClientWorker(options, logger, onStateChange, certificate, trustList);
         try
         {
             await worker.StartAsync().ConfigureAwait(false);
@@ -62,8 +73,9 @@ internal sealed partial class ClientWorker : NativeWorker
     protected override unsafe void OnStart()
     {
         using var strings = new Utf8Strings();
-        fixed (byte* cert = _options.Certificate?.Certificate)
-        fixed (byte* key = _options.Certificate?.PrivateKey)
+        fixed (byte* cert = _certificate?.Certificate)
+        fixed (byte* key = _certificate?.PrivateKey)
+        fixed (byte* trust = _trustList)
         {
             var native = new ClientOptionsNative
             {
@@ -75,13 +87,15 @@ internal sealed partial class ClientWorker : NativeWorker
                 ApplicationUri = strings.Add(_options.ApplicationUri),
                 ApplicationName = strings.Add(_options.ApplicationName),
                 Certificate = cert,
-                CertificateLength = (nuint)(_options.Certificate?.Certificate.Length ?? 0),
+                CertificateLength = (nuint)(_certificate?.Certificate.Length ?? 0),
                 PrivateKey = key,
-                PrivateKeyLength = (nuint)(_options.Certificate?.PrivateKey.Length ?? 0),
+                PrivateKeyLength = (nuint)(_certificate?.PrivateKey.Length ?? 0),
                 Username = strings.Add((_options.Identity as UserIdentity.UserNameIdentity)?.Name),
                 Password = strings.Add((_options.Identity as UserIdentity.UserNameIdentity)?.Password),
                 AcceptAnyServerCertificate = _options.AcceptAnyServerCertificateForDevelopment ? 1u : 0u,
                 LogLevel = NativeLog.ToNativeLevel(_options.NativeLogLevel),
+                TrustList = trust,
+                TrustListLength = (nuint)(_trustList?.Length ?? 0),
             };
             var status = NativeMethods.ClientNew(&native, out var handle);
             if (status != 0)

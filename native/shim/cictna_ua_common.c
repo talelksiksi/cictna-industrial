@@ -258,3 +258,51 @@ int32_t cictna_logq_pop(cictna_log_queue *q, int32_t *level, int32_t *category,
     e->message = NULL;
     return 1;
 }
+
+#ifdef UA_ENABLE_ENCRYPTION
+#include <open62541/plugin/certificategroup_default.h>
+
+uint32_t cictna_ua_verify_certificate(const uint8_t *trust_list, size_t trust_list_len,
+                                      const uint8_t *certificate, size_t certificate_len) {
+    if(!certificate || certificate_len == 0)
+        return UA_STATUSCODE_BADINVALIDARGUMENT;
+    UA_CertificateGroup group;
+    memset(&group, 0, sizeof(group));
+    UA_StatusCode rc = cictna_memorystore(&group, trust_list, trust_list_len, NULL);
+    if(rc != UA_STATUSCODE_GOOD)
+        return rc;
+    UA_ByteString cert = {certificate_len, (UA_Byte *)(uintptr_t)certificate};
+    rc = group.verifyCertificate(&group, &cert);
+    group.clear(&group);
+    return rc;
+}
+
+UA_StatusCode cictna_memorystore(UA_CertificateGroup *group, const uint8_t *trust_list, size_t len,
+                                 const UA_Logger *logger) {
+    UA_TrustListDataType *list = NULL;
+    UA_TrustListDataType empty;
+    UA_TrustListDataType_init(&empty);
+    if(trust_list && len > 0) {
+        UA_StatusCode rc;
+        list = (UA_TrustListDataType *)cictna_decode(&UA_TYPES[UA_TYPES_TRUSTLISTDATATYPE],
+                                                     trust_list, len, &rc);
+        if(!list)
+            return rc;
+    }
+    /* open62541 limits the trust list to 64 KiB by default, about 50 certificates. Plants with
+     * a CA, CRLs and many devices need more; 16 MiB is generous and still bounded. */
+    UA_UInt32 max_size = 16u * 1024u * 1024u;
+    UA_KeyValuePair param;
+    param.key = UA_QUALIFIEDNAME(0, "max-trust-listsize");
+    UA_Variant_setScalar(&param.value, &max_size, &UA_TYPES[UA_TYPES_UINT32]);
+    UA_KeyValueMap params = {1, &param};
+
+    if(group->clear)
+        group->clear(group);
+    UA_NodeId id = UA_NODEID_NUMERIC(0, UA_NS0ID_SERVERCONFIGURATION_CERTIFICATEGROUPS_DEFAULTAPPLICATIONGROUP);
+    UA_StatusCode rc = UA_CertificateGroup_Memorystore(group, &id, list ? list : &empty, logger, &params);
+    if(list)
+        UA_delete(list, &UA_TYPES[UA_TYPES_TRUSTLISTDATATYPE]);
+    return rc;
+}
+#endif

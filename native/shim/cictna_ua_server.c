@@ -18,6 +18,7 @@
 struct cictna_ua_server {
     UA_Server *server;
     int started;
+    int checks_clients;     /* client certificates are checked against a trust list */
     cictna_log_queue log;
 };
 
@@ -38,12 +39,22 @@ uint32_t cictna_ua_server_new(const cictna_ua_server_options *o, cictna_ua_serve
     UA_StatusCode rc;
 #ifdef UA_ENABLE_ENCRYPTION
     if(o->certificate && o->certificate_len && o->private_key && o->private_key_len) {
-        /* None plus all secure policies on one port. Empty trust list: client certificates are
-         * not checked yet (Phase 3 adds trust lists for both client and server). */
+        /* None plus all secure policies on one port. */
         UA_ByteString cert = {o->certificate_len, (UA_Byte *)(uintptr_t)o->certificate};
         UA_ByteString key = {o->private_key_len, (UA_Byte *)(uintptr_t)o->private_key};
         rc = UA_ServerConfig_setDefaultWithSecurityPolicies(&sc, o->port, &cert, &key,
                                                             NULL, 0, NULL, 0, NULL, 0);
+        /* Client certificate validation. Without a trust list open62541 accepts every client
+         * certificate. Unless the caller explicitly asked for that (development), both places
+         * where client certificates are checked get the caller's trust list: the secure channel
+         * (OpenSecureChannel) and the session (CreateSession). An empty list rejects every
+         * client that uses Sign or SignAndEncrypt; SecurityPolicy None is not affected. */
+        if(rc == UA_STATUSCODE_GOOD && !o->accept_any_client_certificate) {
+            rc = cictna_memorystore(&sc.secureChannelPKI, o->trust_list, o->trust_list_len, sc.logging);
+            if(rc == UA_STATUSCODE_GOOD)
+                rc = cictna_memorystore(&sc.sessionPKI, o->trust_list, o->trust_list_len, sc.logging);
+            s->checks_clients = (rc == UA_STATUSCODE_GOOD);
+        }
     } else
 #endif
     {
@@ -109,6 +120,56 @@ uint32_t cictna_ua_server_start(cictna_ua_server *s) {
     UA_StatusCode rc = UA_Server_run_startup(s->server);
     if(rc == UA_STATUSCODE_GOOD)
         s->started = 1;
+    return rc;
+}
+
+uint32_t cictna_ua_server_set_trust_list(cictna_ua_server *s, const uint8_t *trust_list, size_t len) {
+#ifdef UA_ENABLE_ENCRYPTION
+    if(!s->checks_clients)
+        return UA_STATUSCODE_BADINVALIDSTATE;
+    UA_StatusCode rc;
+    UA_TrustListDataType *list = (UA_TrustListDataType *)cictna_decode(
+        &UA_TYPES[UA_TYPES_TRUSTLISTDATATYPE], trust_list, len, &rc);
+    if(!list)
+        return rc;
+    list->specifiedLists = UA_TRUSTLISTMASKS_ALL; /* replace all four lists */
+    UA_ServerConfig *config = UA_Server_getConfig(s->server);
+    rc = config->secureChannelPKI.setTrustList(&config->secureChannelPKI, list);
+    if(rc == UA_STATUSCODE_GOOD)
+        rc = config->sessionPKI.setTrustList(&config->sessionPKI, list);
+    UA_delete(list, &UA_TYPES[UA_TYPES_TRUSTLISTDATATYPE]);
+    return rc;
+#else
+    (void)s; (void)trust_list; (void)len;
+    return UA_STATUSCODE_BADNOTSUPPORTED;
+#endif
+}
+
+uint32_t cictna_ua_server_get_rejected(cictna_ua_server *s, uint8_t **out, size_t *out_len) {
+    *out = NULL;
+    *out_len = 0;
+    UA_TrustListDataType result;
+    UA_TrustListDataType_init(&result);
+    result.specifiedLists = UA_TRUSTLISTMASKS_TRUSTEDCERTIFICATES;
+#ifdef UA_ENABLE_ENCRYPTION
+    if(s->checks_clients) {
+        UA_ServerConfig *config = UA_Server_getConfig(s->server);
+        UA_CertificateGroup *groups[2] = {&config->secureChannelPKI, &config->sessionPKI};
+        for(size_t g = 0; g < 2; g++) {
+            UA_ByteString *list = NULL;
+            size_t count = 0;
+            if(!groups[g]->getRejectedList ||
+               groups[g]->getRejectedList(groups[g], &list, &count) != UA_STATUSCODE_GOOD)
+                continue;
+            for(size_t i = 0; i < count; i++)
+                UA_Array_appendCopy((void **)&result.trustedCertificates, &result.trustedCertificatesSize,
+                                    &list[i], &UA_TYPES[UA_TYPES_BYTESTRING]);
+            UA_Array_delete(list, count, &UA_TYPES[UA_TYPES_BYTESTRING]);
+        }
+    }
+#endif
+    UA_StatusCode rc = cictna_encode(&result, &UA_TYPES[UA_TYPES_TRUSTLISTDATATYPE], out, out_len);
+    UA_TrustListDataType_clear(&result);
     return rc;
 }
 

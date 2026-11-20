@@ -55,6 +55,7 @@ public sealed class ChaosTests
                 AllowAnonymous = true,
                 User = new UserIdentity.UserNameIdentity(User, Password),
                 MaxMonitoredItemQueueSize = 10_000, // 200 s of the producer's 50 values per second
+                AcceptAnyClientCertificateForDevelopment = true,  // trust lists are tested in TrustTests
             },
         };
         await server.InitializeAsync();
