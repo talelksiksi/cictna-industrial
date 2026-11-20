@@ -18,7 +18,7 @@ Proprietary, all rights reserved (see [LICENSE](LICENSE) and [THIRD-PARTY-NOTICE
 | 1 | OPC UA client core | Done (19 Nov 2026): our test server and node-opcua on Windows and Linux CI, Prosys on the PC |
 | 2 | Subscriptions, reconnect, triggers | Done (19 Nov 2026): chaos tests loss-free on Windows and Linux |
 | 3 | Security and certificates | Done (20 Nov 2026): trusted, rejected, expired, renewed on Windows and Linux |
-| 4 | Modbus TCP | next |
+| 4 | Modbus TCP | in progress |
 | 5 | Simulator | |
 | 6 | Store-and-forward and 24-hour soak | |
 | 7 | Packaging and docs | |
@@ -31,6 +31,7 @@ A phase closes only when its exit criteria pass on Windows and Linux. See [CHANG
 - [docs/pc-steps.md](docs/pc-steps.md): what has to be done on the Windows PC, with status
 - [docs/builds/](docs/builds/): one record per build (what, from which commit, verified where)
 - [docs/opcua-client.md](docs/opcua-client.md): how to use the OPC UA client: reads, writes, subscriptions, reconnect, triggers, security (and the test server)
+- [docs/modbus.md](docs/modbus.md): how to use the Modbus TCP client and server: function codes, typed values and byte orders, timeouts, reconnect, what interop testing found
 - [docs/native-layer.md](docs/native-layer.md): how open62541 is built, wrapped and loaded, and the open62541 behaviours we found
 - [docs/coding-standards.md](docs/coding-standards.md)
 
@@ -39,14 +40,14 @@ A phase closes only when its exit criteria pass on Windows and Linux. See [CHANG
 ```
 native/        pinned open62541 + mbedTLS, build scripts, our C shim, licence texts
 src/           managed libraries (Cictna.Industrial.*)
-tests/         Unit/, Integration/, Interop/ (node-opcua, Prosys), Smoke/ (Chaos, Soak, Fuzz come with their phases)
+tests/         Unit/, Integration/, Interop/ (node-opcua, Prosys, modbus-serial, jsmodbus), Fuzz/, Smoke/ (Soak comes with Phase 6)
 scripts/       runner setup, licence collection
 docs/          coding standards, native layer design, PC steps, build records (docs/builds/)
 ```
 
 ## Build
 
-Prerequisites: .NET 10 SDK, Git, CMake 3.20+, Python 3 (open62541 generates code with it). Node.js 22.13+ for the node-opcua interop tests (skipped without it).
+Prerequisites: .NET 10 SDK, Git, CMake 3.20+, Python 3 (open62541 generates code with it). Node.js 22.13+ for the interop tests with node-opcua, modbus-serial and jsmodbus (skipped without it).
 Linux also needs `gcc`, `ninja-build`; ARM64 cross-builds need `gcc-aarch64-linux-gnu` (and `qemu-user-static` to test).
 Windows needs Visual Studio 2022+ or the Build Tools with "Desktop development with C++".
 

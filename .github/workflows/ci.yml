@@ -153,6 +153,10 @@ jobs:
         working-directory: tests/Interop/node-opcua-server
         run: npm ci --no-audit --no-fund
 
+      - name: Install Modbus interop peers
+        working-directory: tests/Interop/modbus-peers
+        run: npm ci --no-audit --no-fund
+
       - uses: actions/download-artifact@v8
         with:
           pattern: native-*
@@ -162,7 +166,8 @@ jobs:
       - name: Build
         run: dotnet build Cictna.Industrial.slnx -c Release
 
-      # Unit, integration (our own server over TCP) and interop (node-opcua) tests.
+      # Unit, integration (our own servers over TCP), interop (node-opcua, modbus-serial, jsmodbus)
+      # and fuzz tests.
       # CICTNA_REQUIRE_INTEROP makes a missing interop server a failure instead of a skip.
       - name: Tests
         env:
@@ -196,7 +201,7 @@ jobs:
       - name: Pack (all runtimes required)
         run: |
           version="${GITHUB_REF_NAME#v}"
-          for project in src/Cictna.Industrial.Core src/Cictna.Industrial.OpcUa.Native src/Cictna.Industrial.OpcUa src/Cictna.Industrial.Triggers; do
+          for project in src/Cictna.Industrial.Core src/Cictna.Industrial.OpcUa.Native src/Cictna.Industrial.OpcUa src/Cictna.Industrial.Triggers src/Cictna.Industrial.Modbus; do
             dotnet pack "$project" -c Release -o artifacts -p:RequireAllNativeRuntimes=true -p:Version="$version"
           done
 

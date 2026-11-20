@@ -39,6 +39,7 @@ the NuGet packages.
 - .NET SDK and runtime: MIT.
 - xUnit.net v3: Apache-2.0.
 - node-opcua (MIT) and its dependencies: interop test server only (tests/Interop), never shipped.
+- modbus-serial (ISC) and jsmodbus (MIT) with their dependencies: Modbus interop test peers only (tests/Interop/modbus-peers), never shipped.
 
 When a native dependency version changes in `native/versions.env`, rebuild, run
 `python3 scripts/collect-native-licenses.py` and update this file.

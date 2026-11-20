@@ -81,8 +81,7 @@ public sealed record ModbusWrite(ModbusTable Table, ushort Address, int Count);
 /// var store = new ModbusDataStore(holdingRegisters: 1000);
 /// store.SetInputRegisters(0, [215, 230]);            // values clients read with function code 4
 /// store.Written += (_, e) => Console.WriteLine($"{e.Table} {e.Address} written");
-/// await using var server = new ModbusTcpServer(new ModbusServerOptions { Port = 5020, DefaultUnit = store });
-/// await server.StartAsync();
+/// await using var server = await ModbusTcpServer.StartAsync(new ModbusServerOptions { Port = 5020, DefaultUnit = store });
 /// </code>
 /// </example>
 public sealed class ModbusDataStore : IModbusDataStore

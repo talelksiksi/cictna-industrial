@@ -4,6 +4,26 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 
 ## [Unreleased]
 
+### Added (Phase 4: Modbus TCP)
+
+- `Cictna.Industrial.Modbus`, pure C#: `ModbusTcpClient` and `ModbusTcpServer` for function codes
+  1, 2, 3, 4, 5, 6, 15, 16 and 23, unit IDs, and `SendRawAsync` for any other function code.
+- Client: results instead of exceptions (`ModbusResult`, status plus Modbus exception code),
+  per-request timeout, pipelining matched by transaction ID with late answers discarded, reads and
+  writes split to protocol or device limits, `AlwaysWriteMultiple`, reconnect with backoff,
+  connection rebuilt after repeated timeouts, TCP keep-alive, `StateChanged`.
+- Typed values: `ModbusPoint`, `ReadValueAsync` and `WriteValueAsync` returning `DataValue`;
+  16, 32 and 64-bit integers, floats, strings, register bits and arrays, in all four word and byte
+  orders; `ModbusDataConverter`.
+- Server: one `IModbusDataStore` per unit ID or a default, `ModbusDataStore` (thread-safe, with a
+  `Written` event), request checks in the order of the specification, unknown units answered with
+  exception 0B or ignored, connection limit, idle and frame timeouts, `DisconnectAll`.
+- Metrics (`Cictna.Industrial.Modbus` meter) and structured logs on both sides.
+- Tests: 110 unit tests (every function code against the specification's examples, every
+  exception, all byte orders), 30 integration tests (split, merged, late and missing frames,
+  broken networks, restarts), 12 interop tests against modbus-serial and jsmodbus in both
+  directions, and a fuzz suite (tests/Fuzz).
+
 ### Added (Phase 3: security and certificates, closed 20 Nov 2026)
 
 Phase 3 exit criteria met on Windows and Linux (CI run 44708296967, build record 0006): trusted, rejected,
