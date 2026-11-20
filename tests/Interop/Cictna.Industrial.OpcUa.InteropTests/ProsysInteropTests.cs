@@ -121,27 +121,11 @@ public sealed class ProsysInteropTests
         // tab. The certificate is kept in a file so it is the same on every run; trust it once
         // (docs/pc-steps.md) and this test passes from then on.
         RequireServer();
-        const string uri = "urn:cictna:interop:prosys-client";
-        var dir = Path.Combine(Path.GetTempPath(), "cictna-interop");
-        Directory.CreateDirectory(dir);
-        var certFile = Path.Combine(dir, "client.der");
-        var keyFile = Path.Combine(dir, "client.key.der");
-        ApplicationCertificate certificate;
-        if (File.Exists(certFile) && File.Exists(keyFile))
-        {
-            certificate = new ApplicationCertificate(await File.ReadAllBytesAsync(certFile, TestContext.Current.CancellationToken),
-                await File.ReadAllBytesAsync(keyFile, TestContext.Current.CancellationToken));
-        }
-        else
-        {
-            certificate = ApplicationCertificate.CreateSelfSigned(uri, "Cictna Interop Client", "CICTNA RDC");
-            await File.WriteAllBytesAsync(certFile, certificate.Certificate, TestContext.Current.CancellationToken);
-            await File.WriteAllBytesAsync(keyFile, certificate.PrivateKey, TestContext.Current.CancellationToken);
-        }
+        var (certificate, certFile) = await InteropClientCertificateAsync();
 
         await using var client = await OpcUaClient.CreateAsync(new OpcUaClientOptions
         {
-            ApplicationUri = uri,
+            ApplicationUri = InteropClientUri,
             Certificate = certificate,
             SecurityMode = MessageSecurityMode.SignAndEncrypt,
             SecurityPolicyUri = SecurityPolicies.Basic256Sha256,
@@ -157,5 +141,54 @@ public sealed class ProsysInteropTests
                 $"'Cictna Interop Client' in Prosys (Certificates tab), then run again. Certificate file: {certFile}");
         }
         Assert.True((await client.ReadAsync(WellKnownNodes.ServerCurrentTime, TestContext.Current.CancellationToken)).Status.IsGood);
+    }
+
+    [Fact]
+    public async Task TheProsysServerCertificateIsTrustedThroughTheCertificateStore()
+    {
+        // Phase 3 against a certificate from another stack: no development flag. The first attempt
+        // must refuse Prosys and save its certificate to rejected/certs; after trusting it there,
+        // the secure connection works. A fresh store every run, so both steps are always exercised.
+        RequireServer();
+        var ct = TestContext.Current.CancellationToken;
+        var (certificate, _) = await InteropClientCertificateAsync();
+        var store = new CertificateStore(Path.Combine(Path.GetTempPath(), "cictna-interop", "pki-" + Guid.NewGuid().ToString("N")[..8]));
+        var options = new OpcUaClientOptions
+        {
+            ApplicationUri = InteropClientUri,
+            Certificate = certificate, // the one already trusted in Prosys
+            CertificateStore = store,
+            SecurityMode = MessageSecurityMode.SignAndEncrypt,
+            SecurityPolicyUri = SecurityPolicies.Basic256Sha256,
+            Reconnect = new ReconnectOptions { Enabled = false },
+        };
+        await using var client = await OpcUaClient.CreateAsync(options);
+        var refused = await Assert.ThrowsAsync<OpcUaException>(() => client.ConnectAsync(Url!, ct));
+        Assert.Equal(StatusCodes.BadCertificateUntrusted, refused.StatusCode);
+        var prosys = Assert.Single(store.Rejected);
+        Assert.True(store.TrustRejected(prosys.Thumbprint));
+        await client.ConnectAsync(Url!, ct);
+        Assert.True((await client.ReadAsync(WellKnownNodes.ServerCurrentTime, ct)).Status.IsGood);
+        Directory.Delete(store.Path, recursive: true);
+    }
+
+    private const string InteropClientUri = "urn:cictna:interop:prosys-client";
+
+    /// <summary>The client certificate Prosys was told to trust (docs/pc-steps.md), kept in a file across runs.</summary>
+    private static async Task<(ApplicationCertificate Certificate, string File)> InteropClientCertificateAsync()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "cictna-interop");
+        Directory.CreateDirectory(dir);
+        var certFile = Path.Combine(dir, "client.der");
+        var keyFile = Path.Combine(dir, "client.key.der");
+        if (File.Exists(certFile) && File.Exists(keyFile))
+        {
+            return (new ApplicationCertificate(await File.ReadAllBytesAsync(certFile, TestContext.Current.CancellationToken),
+                await File.ReadAllBytesAsync(keyFile, TestContext.Current.CancellationToken)), certFile);
+        }
+        var certificate = ApplicationCertificate.CreateSelfSigned(InteropClientUri, "Cictna Interop Client", "CICTNA RDC");
+        await File.WriteAllBytesAsync(certFile, certificate.Certificate, TestContext.Current.CancellationToken);
+        await File.WriteAllBytesAsync(keyFile, certificate.PrivateKey, TestContext.Current.CancellationToken);
+        return (certificate, certFile);
     }
 }

@@ -4,6 +4,32 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 
 ## [Unreleased]
 
+### Added (Phase 3: security and certificates)
+
+- `CertificateStore`: the OPC UA Part 12 folder layout on disk (own, trusted, issuer, rejected,
+  CRLs). Trust, reject, `TrustRejected`, `Untrust`; at most 100 rejected certificates kept.
+- Own certificate from the store: created on first use, renewed before it expires (old one kept
+  in own/old), optionally signed by a CA (`OwnCertificateSettings`), private keys readable by the
+  owner only.
+- `ApplicationCertificate.Create` (self-signed or CA-signed, any validity), `CreateAuthority`,
+  `CreateRevocationList`, and `Subject`, `Thumbprint`, `NotBefore`, `NotAfter`, `ApplicationUri`,
+  `IsAuthority`, `ExpiresWithin`. `TrustList` with `Verify`, using open62541's rules.
+- Client: `CertificateStore` and `OwnCertificate` options; the server certificate is checked
+  before connecting, refused ones are saved to rejected/certs with an error that says what to do,
+  and a refusal by the server names the client certificate to trust there.
+- Server: `CertificateStore`, `OwnCertificate`, `AcceptAnyClientCertificateForDevelopment`;
+  client certificates checked against the store's trust list, changes applied while running,
+  refused clients saved to rejected/certs; `ReloadTrustListAsync`, `ServerCertificate`.
+- Native shim ABI 4 (trust lists, rejected list, certificate check).
+- Tests: 12 trust tests (trusted, rejected, expired, not yet valid, renewed, CA chains, issuer
+  only, revoked) on both sides of the connection; 11 store tests.
+
+### Changed (Phase 3)
+
+- The server no longer accepts every client certificate by default. Without a certificate store
+  and without `AcceptAnyClientCertificateForDevelopment`, clients using Sign or SignAndEncrypt are
+  refused. SecurityPolicy None is unchanged.
+
 ### Added (Phase 2: subscriptions and resilience, closed 19 Nov 2026)
 
 Phase 2 exit criteria met on Windows and Linux (CI run 44548900001, build record 0005): chaos tests with

@@ -31,10 +31,32 @@ public sealed class CertificateStoreTests : IDisposable
         {
             Assert.True(Directory.Exists(Path.Combine(_root, folder)), folder);
         }
-        if (!OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
+        {
+            AssertOnlyOwnerSystemAndAdministrators(store.OwnPrivatePath);
+        }
+        else
         {
             Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(store.OwnPrivatePath));
         }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void AssertOnlyOwnerSystemAndAdministrators(string folder)
+    {
+        var security = new DirectoryInfo(folder).GetAccessControl();
+        Assert.True(security.AreAccessRulesProtected, "the private folder must not inherit permissions");
+        using var me = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var allowed = new HashSet<System.Security.Principal.SecurityIdentifier>
+        {
+            me.User!,
+            new(System.Security.Principal.WellKnownSidType.LocalSystemSid, null),
+            new(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null),
+        };
+        var rules = security.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<System.Security.AccessControl.FileSystemAccessRule>().ToArray();
+        Assert.NotEmpty(rules);
+        Assert.All(rules, r => Assert.Contains((System.Security.Principal.SecurityIdentifier)r.IdentityReference, allowed));
     }
 
     [Fact]

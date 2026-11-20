@@ -1,5 +1,8 @@
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Security.Principal;
 using System.Text;
 
 namespace Cictna.Industrial.OpcUa;
@@ -408,15 +411,44 @@ public sealed class CertificateStore
         File.Move(temp, file, overwrite: true);
     }
 
-    /// <summary>Private keys are readable by the owner only (Unix permissions; on Windows the folder's ACL decides).</summary>
+    /// <summary>
+    /// Private keys are readable by the owner only. Unix: mode 700 on the folder, 600 on key
+    /// files. Windows: the private folder stops inheriting permissions (under C:\ProgramData every
+    /// local user could otherwise read it) and grants full control to the current account, SYSTEM
+    /// and Administrators only; key files inherit that.
+    /// </summary>
     private static void RestrictToOwner(string path, bool directory)
     {
         if (OperatingSystem.IsWindows())
         {
+            if (directory)
+            {
+                RestrictFolderOnWindows(path);
+            }
             return;
         }
         File.SetUnixFileMode(path, directory
             ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
             : UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void RestrictFolderOnWindows(string path)
+    {
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        using var identity = WindowsIdentity.GetCurrent();
+        var owners = new[]
+        {
+            identity.User!,
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+        };
+        foreach (var sid in owners.Distinct())
+        {
+            security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+        }
+        new DirectoryInfo(path).SetAccessControl(security);
     }
 }

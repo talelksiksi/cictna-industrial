@@ -74,6 +74,7 @@ See the comment block in `native/build.sh` for every option. The important ones:
 | 1 | Identity functions and the loopback self test (Phase 0) |
 | 2 | Generic service call, client and server objects, codec round trip, certificates, log queues (Phase 1) |
 | 3 | `cictna_ua_client_close_channel`; `max_monitored_item_queue_size` in the server options (Phase 2) |
+| 4 | Trust lists in client and server options, server accept-any flag, `cictna_ua_server_set_trust_list`, `cictna_ua_server_get_rejected`, `cictna_ua_verify_certificate` (Phase 3) |
 
 ## Changing the C boundary
 
@@ -112,10 +113,23 @@ codec follows open62541 where the specification leaves room, and works around th
   native client, so the managed client creates a fresh native client for every connection
   (Phase 2), and a server restarted with a different namespace order is handled correctly.
 
-- Client certificate validation: with an empty trust list open62541 keeps its default, which
-  accepts every certificate. The shim therefore installs an empty in-memory trust store unless
-  AcceptAnyServerCertificateForDevelopment is set, so untrusted server certificates are rejected.
-  The server side still accepts any client certificate; trust lists for both sides are Phase 3.
+- Certificate validation defaults: without a trust list open62541 accepts every certificate, on
+  the client (server certificates) and on the server (client certificates). The shim always
+  installs open62541's in-memory store instead, filled with the trust list from C#; an empty list
+  rejects everything. Only the explicit development flags install accept-all. On the server both
+  places that check client certificates get the list: the secure channel and the session.
+- Which side refused: the handshake reports BadSecurityChecksFailed whether the client refused
+  the server certificate or the server refused the client's. `cictna_ua_verify_certificate` runs
+  the same in-memory store check on the server certificate before connecting, so the client knows
+  the exact reason (or knows it was the server).
+- Trust list size: the in-memory store accepts 64 KiB of trust list by default (about 50
+  certificates); the shim raises that to 16 MiB.
+- CRLs: once any CRL is loaded, every CA in a chain needs one (otherwise
+  BadCertificateRevocationUnknown); with none loaded, revocation is not checked.
+- Why the store is in C# and not open62541's Filestore: the Filestore notices files moved into
+  trusted/ through inotify on Linux, but has no change detection on Windows. Our
+  `CertificateStore` behaves the same on both: the client reads it for every connection, and the
+  server checks it every second and pushes changes with `cictna_ua_server_set_trust_list`.
 - Endpoint switching: open62541's own endpoint selection closes and reopens the channel to change
   security, which does not work with noReconnect. The client therefore runs GetEndpoints on a
   separate plain discovery client, chooses the endpoint in C# (EndpointSelector) and passes it in

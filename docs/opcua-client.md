@@ -193,35 +193,114 @@ real change.
 
 ## Security
 
+Plant connections should use SignAndEncrypt with certificates checked on both sides. That takes a
+certificate store on each side and one decision per peer: trust it or not.
+
+### The certificate store
+
 ```csharp
-var certificate = ApplicationCertificate.CreateSelfSigned(
-    applicationUri: "urn:plant-logger:client", commonName: "Plant Data Logger", organization: "CICTNA RDC");
-// Store certificate.Certificate and certificate.PrivateKey and reuse them: servers trust a
-// certificate, not an application name. (Certificate stores arrive in Phase 3.)
+var store = new CertificateStore(@"C:\ProgramData\PlantLogger\pki");   // or /var/lib/plant-logger/pki
 
 await using var client = await OpcUaClient.CreateAsync(new OpcUaClientOptions
 {
-    ApplicationUri = "urn:plant-logger:client",     // must match the certificate
-    Certificate = certificate,
+    ApplicationUri = "urn:plant-logger:client",
+    ApplicationName = "Plant Data Logger",
     SecurityMode = MessageSecurityMode.SignAndEncrypt,
     SecurityPolicyUri = SecurityPolicies.Basic256Sha256,
+    CertificateStore = store,           // own certificate and trust list
     Identity = UserIdentity.UserName("operator", password),
-    AcceptAnyServerCertificateForDevelopment = true,  // until Phase 3 trust lists; never in production
 });
 ```
 
-How connecting works: the client asks the server for its endpoints (`GetEndpointsAsync`), picks the
-one that matches the options (highest security level first), and connects with exactly that
-endpoint. The TCP connection always goes to the URL you passed, even if the server advertises a
-different host name. If nothing matches, the exception says what the server offers, for example:
+The store is a folder in the layout OPC UA uses (Part 12):
+
+```
+pki/
+  own/certs        this application's certificate      own/private   its key (owner only)
+  own/old          certificates replaced at renewal
+  trusted/certs    trusted peers and trusted CAs       trusted/crl   their revocation lists
+  issuer/certs     CAs needed for chains, not trusted  issuer/crl    their revocation lists
+  rejected/certs   refused peers, waiting for a decision
+```
+
+- **Own certificate.** Created on first use (self-signed, two years) and renewed 30 days before it
+  expires; the old one moves to own/old. `OwnCertificate` changes that, for example to have it
+  signed by a plant CA. `Certificate` can still be given directly instead.
+- **Trust.** The client reads the trust list again for every connection, so a change applies from
+  the next attempt on, also during automatic reconnects.
+
+### Trusting a server the first time
+
+The first connection to a new server fails, on purpose:
+
+```
+OpcUaException BadCertificateUntrusted: The server certificate CN=Line 3 PLC Gateway
+[3F2A...C1] was refused (BadCertificateUntrusted). It was saved to ...\pki\rejected\certs; to trust
+this server, move it to ...\pki\trusted\certs (or call CertificateStore.TrustRejected).
+```
+
+Check the thumbprint with whoever runs the server (it is shown in the server's own tools), then
+move the file, or `store.TrustRejected("3F2A...C1")`. The server does the same for clients: a
+Cictna server saves refused client certificates in its own rejected/certs, and picks up a file
+moved to trusted/certs within a second, without a restart. Other servers (Prosys, PLCs) have
+their own screen for this.
+
+The client checks the server certificate itself before connecting, with exactly the rules
+open62541 uses in the handshake. That is how the error can say which side refused: when our
+check passes and the server then closes the channel, the message says the server refused this
+client's certificate and shows its thumbprint.
+
+### What is checked
+
+Every certificate in the chain: signature, trust (a trusted certificate, or one issued by a
+trusted CA), validity period (`BadCertificateTimeInvalid` for expired or not yet valid),
+revocation, and use (a CA certificate cannot be an application certificate). Expired certificates
+are refused even when trusted.
+
+### Using a plant CA
+
+With many devices, trusting every certificate one by one gets tedious, and every renewal of a
+self-signed certificate has to be trusted again. A CA solves both: trust the CA once, and every
+certificate it signs is trusted, renewed ones included.
+
+```csharp
+var ca = ApplicationCertificate.CreateAuthority("Plant 3 CA", "CICTNA RDC");   // keep its key safe
+var options = new OpcUaClientOptions
+{
+    CertificateStore = store,
+    OwnCertificate = new OwnCertificateSettings("urn:plant-logger:client", "Plant Data Logger") { Issuer = ca },
+};
+// On each server: trust ca.Certificate (trusted/certs).
+```
+
+A CA in issuer/certs (instead of trusted/certs) only helps build chains: the certificates it
+signed are still trusted one by one.
+
+### Revocation lists
+
+Put CRLs in trusted/crl (or issuer/crl): `store.AddRevocationList(ca.CreateRevocationList(revoked, number))`.
+Once any CRL is present, open62541 expects one from every CA in a chain and refuses certificates
+of a CA without one (`BadCertificateRevocationUnknown`); issue an empty list for a CA that has
+revoked nothing. With no CRLs at all, revocation is not checked.
+
+### Development shortcuts
+
+`AcceptAnyServerCertificateForDevelopment` (client) and `AcceptAnyClientCertificateForDevelopment`
+(server) skip the checks. They allow a man-in-the-middle, log a warning on every use, and do not
+belong on a plant network. Without a store and without these flags, a secure connection is refused
+on both sides: secure by default.
+
+### Choosing the endpoint
+
+The client asks the server for its endpoints, picks the one that matches the options (highest
+security level first), and connects with exactly that endpoint. The TCP connection always goes to
+the URL you passed, even if the server advertises a different host name. If nothing matches, the
+exception says what the server offers, for example:
 
 ```
 No usable endpoint: none matches mode SignAndEncrypt and policy Basic256Sha256.
 The server offers None/None (Anonymous); Sign/Basic128Rsa15 (Anonymous,UserName)
 ```
-
-Without `AcceptAnyServerCertificateForDevelopment`, untrusted server certificates are rejected.
-Trust lists (and checking the server against them) come in Phase 3.
 
 ## Logging and metrics
 
@@ -243,7 +322,11 @@ dropped native log lines. Watch them live with
 ## A server for tests and demos
 
 ```csharp
-await using var server = await OpcUaServer.StartAsync(new OpcUaServerOptions { Port = 4840 });
+await using var server = await OpcUaServer.StartAsync(new OpcUaServerOptions
+{
+    Port = 4840,
+    CertificateStore = new CertificateStore("pki"),   // server certificate and trusted clients
+});
 var ns = await server.AddNamespaceAsync("urn:demo:plant");
 var pumps = await server.AddFolderAsync(WellKnownNodes.ObjectsFolder, new NodeId("Pumps", ns), "Pumps");
 var speed = await server.AddVariableAsync(pumps, new NodeId("Pump01.Speed", ns), "Speed", 0.0);
