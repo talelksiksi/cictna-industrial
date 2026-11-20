@@ -15,3 +15,4 @@ native/out/
 # Interop test server dependencies (installed by npm ci)
 tests/Interop/node-opcua-server/node_modules/
 tests/Interop/node-opcua-server/pki/
+tests/Interop/modbus-peers/node_modules/

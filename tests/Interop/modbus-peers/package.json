@@ -1,0 +1,11 @@
+{
+  "name": "cictna-interop-modbus-peers",
+  "private": true,
+  "description": "Independent Modbus TCP implementations (modbus-serial, ISC; jsmodbus, MIT) used only by the interop tests. Never shipped.",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22.13.0" },
+  "dependencies": {
+    "jsmodbus": "5.0.0",
+    "modbus-serial": "8.0.25"
+  }
+}

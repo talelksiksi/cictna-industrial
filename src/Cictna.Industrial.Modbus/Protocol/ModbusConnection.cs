@@ -180,11 +180,12 @@ internal sealed class ModbusConnection : IAsyncDisposable
         }
         try
         {
-            _socket.Close(0);
+            _socket.Shutdown(SocketShutdown.Both); // orderly: some small servers do not cope with a reset
         }
-        catch (ObjectDisposedException)
+        catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
         {
         }
+        _socket.Dispose();
         foreach (var transactionId in _pending.Keys)
         {
             if (_pending.TryRemove(transactionId, out var waiting))

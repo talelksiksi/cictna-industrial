@@ -12,6 +12,7 @@
     <Project Path="tests/Integration/Cictna.Industrial.OpcUa.IntegrationTests/Cictna.Industrial.OpcUa.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/tests/Interop/">
+    <Project Path="tests/Interop/Cictna.Industrial.Modbus.InteropTests/Cictna.Industrial.Modbus.InteropTests.csproj" />
     <Project Path="tests/Interop/Cictna.Industrial.OpcUa.InteropTests/Cictna.Industrial.OpcUa.InteropTests.csproj" />
   </Folder>
   <Folder Name="/tests/Smoke/">

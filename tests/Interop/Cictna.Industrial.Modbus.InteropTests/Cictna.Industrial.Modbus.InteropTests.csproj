@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Our Modbus client and server against two independent Modbus TCP implementations,
+    modbus-serial (ISC) and jsmodbus (MIT), started from tests/Interop/modbus-peers. Needs
+    Node.js 22.13+; without it the tests are skipped, unless CICTNA_REQUIRE_INTEROP=1 (CI),
+    then they fail.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cictna.Industrial.Modbus\Cictna.Industrial.Modbus.csproj" />
+  </ItemGroup>
+
+</Project>
