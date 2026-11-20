@@ -4,7 +4,11 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 
 ## [Unreleased]
 
-### Added (Phase 3: security and certificates)
+### Added (Phase 3: security and certificates, closed 20 Nov 2026)
+
+Phase 3 exit criteria met on Windows and Linux (CI run 44708296967, build record 0006): trusted, rejected,
+expired and renewed certificates, checked on both sides of the connection.
+
 
 - `CertificateStore`: the OPC UA Part 12 folder layout on disk (own, trusted, issuer, rejected,
   CRLs). Trust, reject, `TrustRejected`, `Untrust`; at most 100 rejected certificates kept.
@@ -23,6 +27,8 @@ All notable changes are listed here. Versions follow semantic versioning; tags a
 - Native shim ABI 4 (trust lists, rejected list, certificate check).
 - Tests: 12 trust tests (trusted, rejected, expired, not yet valid, renewed, CA chains, issuer
   only, revoked) on both sides of the connection; 11 store tests.
+- The private key folder is restricted to its owner on Windows too (no inherited permissions;
+  the current account, SYSTEM and Administrators only).
 
 ### Changed (Phase 3)
 
