@@ -7,6 +7,9 @@
     <Project Path="src/Cictna.Industrial.Modbus/Cictna.Industrial.Modbus.csproj" />
   </Folder>
   <Folder Name="/tests/" />
+  <Folder Name="/tests/Fuzz/">
+    <Project Path="tests/Fuzz/Cictna.Industrial.Modbus.FuzzTests/Cictna.Industrial.Modbus.FuzzTests.csproj" />
+  </Folder>
   <Folder Name="/tests/Integration/">
     <Project Path="tests/Integration/Cictna.Industrial.Modbus.IntegrationTests/Cictna.Industrial.Modbus.IntegrationTests.csproj" />
     <Project Path="tests/Integration/Cictna.Industrial.OpcUa.IntegrationTests/Cictna.Industrial.OpcUa.IntegrationTests.csproj" />

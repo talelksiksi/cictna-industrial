@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Mutation fuzzing of the Modbus parsers: the server's request handling and frame splitting,
+    and the client's response checks and receive loop. Seeded and repeatable: a failure prints
+    its seed; CICTNA_FUZZ_SEED replays it and CICTNA_FUZZ_SCALE runs longer (default 1).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cictna.Industrial.Modbus\Cictna.Industrial.Modbus.csproj" />
+  </ItemGroup>
+
+</Project>

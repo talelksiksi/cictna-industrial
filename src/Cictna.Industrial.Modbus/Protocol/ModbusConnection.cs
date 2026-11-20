@@ -226,6 +226,12 @@ internal sealed class ModbusConnection : IAsyncDisposable
         {
             Fail(StatusCodes.BadConnectionClosed);
         }
+#pragma warning disable CA1031 // Whatever went wrong, waiting requests must end and the client must reconnect.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            Fail(StatusCodes.BadUnexpectedError);
+        }
     }
 
     private static void EnableKeepAlive(Socket socket)

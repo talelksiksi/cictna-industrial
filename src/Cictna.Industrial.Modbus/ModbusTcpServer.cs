@@ -251,6 +251,13 @@ public sealed partial class ModbusTcpServer : IAsyncDisposable
         {
             reason = _stopping.IsCancellationRequested ? "server stopping" : "connection lost";
         }
+#pragma warning disable CA1031 // A bug must cost one connection, never the server; it is logged as an error.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            reason = "internal error";
+            LogUnexpected(_logger, ex, remote);
+        }
         finally
         {
             Close(socket);
@@ -349,6 +356,9 @@ public sealed partial class ModbusTcpServer : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Frame from {Remote} with protocol ID {ProtocolId} skipped")]
     private static partial void LogSkippedProtocol(ILogger logger, string remote, ushort protocolId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Unexpected error serving {Remote}; the connection was closed")]
+    private static partial void LogUnexpected(ILogger logger, Exception exception, string remote);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Data store for unit {UnitId} failed on function {Function}; answered exception 04")]
     private static partial void LogStoreFailed(ILogger logger, Exception exception, byte unitId, byte function);
